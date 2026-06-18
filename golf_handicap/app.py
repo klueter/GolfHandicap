@@ -78,9 +78,10 @@ def init_db():
         AFTER INSERT ON round
         BEGIN
             UPDATE round
-            SET score_differential = (
-                NEW.adjusted_gross_score - (SELECT course_rating FROM tee_set WHERE id = NEW.tee_set_id)
-            ) * 113.0 / (SELECT slope_rating FROM tee_set WHERE id = NEW.tee_set_id)
+            SET score_differential = ROUND(
+                (NEW.adjusted_gross_score - (SELECT course_rating FROM tee_set WHERE id = NEW.tee_set_id))
+                * 113.0 / (SELECT slope_rating FROM tee_set WHERE id = NEW.tee_set_id),
+            1)
             WHERE id = NEW.id;
         END;
     ''')
@@ -325,7 +326,7 @@ def save_hole_scores(golfer_id, round_id):
     # Recalculate total score and differential from hole scores
     conn.execute('UPDATE round SET adjusted_gross_score = ? WHERE id = ?', (total_strokes, round_id))
     conn.execute('''
-        UPDATE round SET score_differential = (adjusted_gross_score - ?) * 113.0 / ?
+        UPDATE round SET score_differential = ROUND((adjusted_gross_score - ?) * 113.0 / ?, 1)
         WHERE id = ?
     ''', (course_rating, slope, round_id))
     
