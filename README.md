@@ -42,7 +42,7 @@ pip install flask
 python app.py
 ```
 
-Then open [http://localhost:5000](http://localhost:5000) in your browser.
+Then open [http://localhost:5001](http://localhost:5001) in your browser.
 
 The database (`golf_handicap.db`) is created automatically in your home directory on first run.
 

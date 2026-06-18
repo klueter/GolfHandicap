@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="no-print" style="margin-bottom:1.25rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+    <a href="{{ url_for('courses') }}" class="page-back">← Back to Courses</a>
+
+    <form method="GET" action="{{ url_for('scorecard', tee_id=tee.id) }}" style="display:flex; gap:0.5rem; align-items:center; margin-left:auto;">
+        <select name="golfer_id" onchange="this.form.submit()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:4px; font-family:inherit; font-size:0.9rem;">
+            <option value="">— No player —</option>
+            {% for g in golfers %}
+                <option value="{{ g.id }}" {% if selected_golfer_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-secondary no-print">Load</button>
+    </form>
+
+    <button onclick="window.print()" class="btn btn-primary no-print">🖨 Print</button>
+</div>
+
+<!-- Scorecard -->
+<div class="scorecard-wrap">
+    <div class="scorecard-header">
+        <div>
+            <h1 class="scorecard-course">{{ tee.course_name }}</h1>
+            {% if tee.city %}
+                <p class="scorecard-location">{{ tee.city }}{% if tee.country %}, {{ tee.country }}{% endif %}</p>
+            {% endif %}
+        </div>
+        <div class="scorecard-meta">
+            <div><span class="meta-label">Tees</span> <strong>{{ tee.tee_name }}</strong></div>
+            <div><span class="meta-label">Rating</span> <strong>{{ tee.course_rating }}</strong></div>
+            <div><span class="meta-label">Slope</span> <strong>{{ tee.slope_rating }}</strong></div>
+            <div><span class="meta-label">Par</span> <strong>{{ tee.par }}</strong></div>
+        </div>
+    </div>
+
+    {% if player %}
+        <div class="scorecard-player">
+            <span class="meta-label">Player</span>
+            <strong>{{ player.name }}</strong>
+            {% if course_handicap is not none %}
+                &nbsp;·&nbsp; <span class="meta-label">Course HCP</span> <strong>{{ course_handicap }}</strong>
+                &nbsp;·&nbsp; <span class="meta-label">Date</span> <span class="date-blank">___________</span>
+            {% else %}
+                &nbsp;·&nbsp; <em class="text-muted">No handicap index yet</em>
+            {% endif %}
+        </div>
+    {% else %}
+        <div class="scorecard-player">
+            <span class="meta-label">Player</span> <span class="date-blank">_______________________</span>
+            &nbsp;&nbsp; <span class="meta-label">HCP</span> <span class="date-blank">_______</span>
+            &nbsp;&nbsp; <span class="meta-label">Date</span> <span class="date-blank">___________</span>
+        </div>
+    {% endif %}
+
+    <!-- Front 9 -->
+    <table class="scorecard-table">
+        <thead>
+            <tr>
+                <th>Hole</th>
+                {% for n in range(1, 10) %}<th>{{ n }}</th>{% endfor %}
+                <th>Out</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="row-par">
+                <td>Par</td>
+                {% set front_total = namespace(v=0) %}
+                {% for h in hole_list[:9] %}
+                    {% if h %}
+                        <td>{{ h.par }}</td>
+                        {% set front_total.v = front_total.v + h.par %}
+                    {% else %}
+                        <td>—</td>
+                    {% endif %}
+                {% endfor %}
+                <td>{{ front_par or '—' }}</td>
+            </tr>
+            <tr class="row-hcp">
+                <td>HCP</td>
+                {% for h in hole_list[:9] %}
+                    <td>{% if h %}{{ h.handicap }}{% else %}—{% endif %}</td>
+                {% endfor %}
+                <td></td>
+            </tr>
+            {% if player and course_handicap is not none %}
+            <tr class="row-strokes">
+                <td>Strokes</td>
+                {% for h in hole_list[:9] %}
+                    {% set s = strokes_per_hole.get(h.hole_number, 0) if h else 0 %}
+                    <td>{% if s > 0 %}{{ '●' * s }}{% endif %}</td>
+                {% endfor %}
+                <td></td>
+            </tr>
+            {% endif %}
+            <tr class="row-score">
+                <td>Score</td>
+                {% for _ in range(9) %}<td></td>{% endfor %}
+                <td></td>
+            </tr>
+            <tr class="row-net">
+                <td>Net</td>
+                {% for _ in range(9) %}<td></td>{% endfor %}
+                <td></td>
+            </tr>
+            <tr class="row-putts">
+                <td>Putts</td>
+                {% for _ in range(9) %}<td></td>{% endfor %}
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Back 9 -->
+    <table class="scorecard-table" style="margin-top:0.75rem;">
+        <thead>
+            <tr>
+                <th>Hole</th>
+                {% for n in range(10, 19) %}<th>{{ n }}</th>{% endfor %}
+                <th>In</th>
+                <th>Tot</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="row-par">
+                <td>Par</td>
+                {% for h in hole_list[9:] %}
+                    <td>{% if h %}{{ h.par }}{% else %}—{% endif %}</td>
+                {% endfor %}
+                <td>{{ back_par or '—' }}</td>
+                <td>{{ tee.par }}</td>
+            </tr>
+            <tr class="row-hcp">
+                <td>HCP</td>
+                {% for h in hole_list[9:] %}
+                    <td>{% if h %}{{ h.handicap }}{% else %}—{% endif %}</td>
+                {% endfor %}
+                <td></td><td></td>
+            </tr>
+            {% if player and course_handicap is not none %}
+            <tr class="row-strokes">
+                <td>Strokes</td>
+                {% for h in hole_list[9:] %}
+                    {% set s = strokes_per_hole.get(h.hole_number, 0) if h else 0 %}
+                    <td>{% if s > 0 %}{{ '●' * s }}{% endif %}</td>
+                {% endfor %}
+                <td></td><td></td>
+            </tr>
+            {% endif %}
+            <tr class="row-score">
+                <td>Score</td>
+                {% for _ in range(9) %}<td></td>{% endfor %}
+                <td></td><td></td>
+            </tr>
+            <tr class="row-net">
+                <td>Net</td>
+                {% for _ in range(9) %}<td></td>{% endfor %}
+                <td></td><td></td>
+            </tr>
+            <tr class="row-putts">
+                <td>Putts</td>
+                {% for _ in range(9) %}<td></td>{% endfor %}
+                <td></td><td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    {% if not hole_list|select|list %}
+        <p class="text-muted" style="margin-top:1rem;">No hole details have been entered for this tee set. <a href="{{ url_for('edit_holes', tee_id=tee.id) }}">Add them here.</a></p>
+    {% endif %}
+</div>
+
+{% endblock %}

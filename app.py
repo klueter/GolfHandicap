@@ -647,5 +647,5 @@ def scorecard(tee_id):
 
 if __name__ == '__main__':
     init_db()
-    print("\n⛳  Golf Handicap Tracker running at http://localhost:5000\n")
-    app.run(debug=False, port=5000)
+    print("\n⛳  Golf Handicap Tracker running at http://localhost:5001\n")
+    app.run(debug=False, port=5001)
