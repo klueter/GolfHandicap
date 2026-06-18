@@ -575,6 +575,76 @@ def api_tees(course_id):
     conn.close()
     return jsonify([dict(t) for t in tees])
 
+@app.route('/tee/<int:tee_id>/scorecard')
+def scorecard(tee_id):
+    conn = get_db()
+    tee = conn.execute('''
+        SELECT t.*, c.name as course_name, c.city, c.country
+        FROM tee_set t JOIN course c ON t.course_id = c.id
+        WHERE t.id = ?
+    ''', (tee_id,)).fetchone()
+
+    if not tee:
+        conn.close()
+        flash('Tee set not found.', 'danger')
+        return redirect(url_for('courses'))
+
+    tee = dict(tee)
+
+    holes = conn.execute(
+        'SELECT * FROM hole WHERE tee_set_id = ? ORDER BY hole_number',
+        (tee_id,)
+    ).fetchall()
+    holes = [dict(h) for h in holes]
+
+    golfers = conn.execute('SELECT * FROM golfer ORDER BY name').fetchall()
+    golfers = [dict(g) for g in golfers]
+    conn.close()
+
+    # Build a full 18-hole list, filling gaps with None
+    hole_map = {h['hole_number']: h for h in holes}
+    hole_list = [hole_map.get(n) for n in range(1, 19)]
+
+    # Optional golfer
+    golfer_id = request.args.get('golfer_id', type=int)
+    player = None
+    course_handicap = None
+    strokes_per_hole = {}
+
+    if golfer_id:
+        player = next((g for g in golfers if g['id'] == golfer_id), None)
+        if player:
+            handicap, _, _ = calculate_handicap(golfer_id)
+            if handicap is not None:
+                raw_ch = handicap * tee['slope_rating'] / 113.0 + (tee['course_rating'] - tee['par'])
+                course_handicap = int(round(raw_ch))
+                for h in holes:
+                    n = h['hole_number']
+                    hcp = h['handicap']
+                    if course_handicap >= 18:
+                        strokes = 1 + (1 if hcp <= (course_handicap - 18) else 0)
+                    elif course_handicap > 0:
+                        strokes = 1 if hcp <= course_handicap else 0
+                    else:
+                        strokes = 0
+                    strokes_per_hole[n] = strokes
+
+    # Par totals
+    front_par = sum(h['par'] for h in holes if h and h['hole_number'] <= 9)
+    back_par  = sum(h['par'] for h in holes if h and h['hole_number'] >= 10)
+
+    return render_template('scorecard.html',
+        tee=tee,
+        hole_list=hole_list,
+        golfers=golfers,
+        player=player,
+        course_handicap=course_handicap,
+        strokes_per_hole=strokes_per_hole,
+        front_par=front_par,
+        back_par=back_par,
+        selected_golfer_id=golfer_id,
+    )
+
 if __name__ == '__main__':
     init_db()
     print("\n⛳  Golf Handicap Tracker running at http://localhost:5000\n")

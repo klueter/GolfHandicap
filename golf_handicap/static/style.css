@@ -593,6 +593,110 @@ a { color: var(--primary); }
     margin-top: 3rem;
 }
 
+/* ── Scorecard ────────────────────────────────────────────────────────────── */
+.scorecard-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    max-width: 900px;
+}
+
+.scorecard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--primary);
+    flex-wrap: wrap;
+}
+
+.scorecard-course {
+    font-size: 1.4rem;
+    color: var(--primary);
+    margin-bottom: 0.15rem;
+}
+
+.scorecard-location {
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.scorecard-meta {
+    display: flex;
+    gap: 1.25rem;
+    font-size: 0.85rem;
+    flex-wrap: wrap;
+    text-align: right;
+}
+
+.scorecard-meta > div { line-height: 1.4; }
+
+.scorecard-player {
+    font-size: 0.875rem;
+    padding: 0.6rem 0;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.meta-label {
+    color: var(--text-light);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 0.2rem;
+}
+
+.date-blank {
+    color: var(--text-light);
+    border-bottom: 1px solid var(--text-light);
+    display: inline-block;
+    min-width: 80px;
+}
+
+.scorecard-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    table-layout: fixed;
+}
+
+.scorecard-table th,
+.scorecard-table td {
+    border: 1px solid var(--border);
+    text-align: center;
+    padding: 0.35rem 0.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.scorecard-table th {
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+    font-size: 0.78rem;
+}
+
+.scorecard-table td:first-child {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-light);
+    background: var(--card-alt);
+    text-align: left;
+    padding-left: 0.5rem;
+}
+
+.row-par td  { background: #f0f8f4; font-weight: 600; }
+.row-hcp td  { background: var(--card-alt); color: var(--text-light); font-size: 0.75rem; }
+.row-strokes td { background: #fffbf5; font-size: 0.85rem; color: var(--primary); letter-spacing: -0.05em; }
+.row-score td { height: 2rem; }
+.row-net td   { height: 1.75rem; background: #fafaf8; }
+.row-putts td { height: 1.75rem; }
+
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
     .dashboard-header {
@@ -613,4 +717,25 @@ a { color: var(--primary); }
     .hero h1 { font-size: 1.75rem; }
 
     .tee-item { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Print ────────────────────────────────────────────────────────────────── */
+@media print {
+    .no-print,
+    .navbar,
+    .footer { display: none !important; }
+
+    body { background: white; color: black; font-size: 11pt; }
+
+    .container { padding: 0; max-width: 100%; }
+
+    .scorecard-wrap {
+        border: none;
+        padding: 0;
+        max-width: 100%;
+    }
+
+    .scorecard-table th  { background: #1f6f42 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .row-par td          { background: #f0f8f4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .scorecard-table td:first-child { background: #f8f6f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
