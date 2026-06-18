@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-header">
+    <div>
+        <h1>{{ golfer.name }}</h1>
+        <p class="member-since">Member since {{ golfer.member_since }}</p>
+    </div>
+    <div class="handicap-display">
+        {% if handicap is not none %}
+            <div class="handicap-box">
+                <span class="label">Handicap Index</span>
+                <span class="value">{{ handicap }}</span>
+                <span class="rounds">{{ rounds_used }} rounds</span>
+            </div>
+        {% else %}
+            <p class="text-muted">Play {{ 3 - rounds_used }} more round{{ 's' if (3 - rounds_used) != 1 }} to calculate handicap</p>
+        {% endif %}
+        <form method="POST" action="{{ url_for('recalculate_handicap', golfer_id=golfer.id) }}" style="margin-top:0.6rem;">
+            <button type="submit" class="btn btn-sm btn-secondary">Recalculate</button>
+        </form>
+        {% if snapshots %}
+            <div class="snapshot-history">
+                <span class="snapshot-label">Recent snapshots</span>
+                {% for s in snapshots %}
+                    <div class="snapshot-row">
+                        <span>{{ s.calculated_on }}</span>
+                        <span>{{ s.handicap_index }}</span>
+                        <span class="text-muted">({{ s.rounds_used }})</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <!-- Record a Round -->
+    <section class="card">
+        <h2>Record a Round</h2>
+        <form method="POST" action="{{ url_for('add_round', golfer_id=golfer.id) }}">
+            <div class="form-group">
+                <label>Course</label>
+                <select id="course-select" name="course_id" required onchange="loadTees()">
+                    <option value="">Select a course…</option>
+                    {% for course in courses %}
+                        <option value="{{ course.id }}">{{ course.name }}{% if course.city %} ({{ course.city }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Tee Set</label>
+                <select id="tee-select" name="tee_set_id" required>
+                    <option value="">Select tees…</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" name="played_on" value="{{ today }}" required>
+            </div>
+            <div class="form-group">
+                <label>Adjusted Gross Score <span class="text-muted">(optional)</span></label>
+                <input type="number" name="adjusted_gross_score" min="1" max="200" placeholder="Leave blank to calculate from holes">
+            </div>
+            <div class="form-group">
+                <label>Weather Notes <span class="text-muted">(optional)</span></label>
+                <input type="text" name="weather_notes" placeholder="e.g. Windy, Rainy">
+            </div>
+            <button type="submit" class="btn btn-primary">Save Round</button>
+        </form>
+    </section>
+
+    <!-- Recent Rounds -->
+    <section class="card">
+        <div class="rounds-header">
+            <h2>Last 20 Rounds</h2>
+            <div class="sort-controls">
+                <span class="sort-label">Sort:</span>
+                <button type="button" id="sort-date" class="btn btn-sm sort-btn active" onclick="sortRounds('date')">Date ↓</button>
+                <button type="button" id="sort-diff" class="btn btn-sm sort-btn" onclick="sortRounds('diff')">Diff</button>
+            </div>
+        </div>
+
+        {% if rounds %}
+            {% if used_round_ids %}
+                <div class="rounds-legend">
+                    <span class="used-badge">USED</span>
+                    rounds count toward your current handicap index
+                </div>
+            {% endif %}
+
+            <div class="rounds-list" id="rounds-list">
+                {% for round in rounds %}
+                    <div class="round-pair"
+                         data-date="{{ round.played_on }}"
+                         data-diff="{{ round.score_differential if round.score_differential is not none else '9999' }}">
+
+                        <div class="round-item{% if round.id in used_round_ids %} round-item--used{% endif %}">
+                            <div class="round-info">
+                                <strong>{{ round.course_name }}</strong>
+                                <span class="tee-badge">{{ round.tee_name }}</span>
+                                {% if round.id in used_round_ids %}
+                                    <span class="used-badge">USED</span>
+                                {% endif %}
+                                <div class="round-details">
+                                    <span>{{ round.played_on }}</span>
+                                    <span>Score: {{ round.adjusted_gross_score }}</span>
+                                    {% if round.score_differential %}
+                                        <span>Diff: {{ "%.1f"|format(round.score_differential) }}</span>
+                                    {% endif %}
+                                    {% if round.weather_notes %}
+                                        <span class="weather">{{ round.weather_notes }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="round-actions">
+                                <button type="button" class="btn btn-sm btn-primary" onclick="toggleHoles({{ round.id }})">Holes</button>
+                                <form method="POST" action="{{ url_for('delete_round', golfer_id=golfer.id, round_id=round.id) }}">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this round?')">Delete</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div id="holes-{{ round.id }}" class="holes-section" style="display:none;">
+                            <h4>Hole Scores — Par {{ round.par }}</h4>
+                            <div class="score-display">Running total: <strong id="total-{{ round.id }}">0</strong></div>
+                            {% if handicap is not none %}
+                                <p class="esc-info">ESC limits applied (handicap {{ handicap }})</p>
+                            {% else %}
+                                <p class="esc-info">ESC limits start after 3 rounds</p>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('save_hole_scores', golfer_id=golfer.id, round_id=round.id) }}">
+                                <div class="holes-grid">
+                                    {% for hole in range(1, 19) %}
+                                        <div class="hole-input">
+                                            <label>{{ hole }}</label>
+                                            <div class="hole-par">Par {{ round.par // 18 }}</div>
+                                            <input
+                                                type="number"
+                                                name="hole_{{ hole }}_strokes"
+                                                min="1" max="15"
+                                                class="hole-input-field"
+                                                data-round="{{ round.id }}"
+                                                value="{{ round.hole_scores.get(hole, '') }}"
+                                                onchange="updateTotal({{ round.id }})">
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-primary">Save Scores</button>
+                                    <button type="button" class="btn btn-secondary" onclick="toggleHoles({{ round.id }})">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div><!-- /.round-pair -->
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No rounds recorded yet.</p>
+        {% endif %}
+    </section>
+</div>
+
+<script>
+function loadTees() {
+    const courseId = document.getElementById('course-select').value;
+    const teeSelect = document.getElementById('tee-select');
+    teeSelect.innerHTML = '<option value="">Select tees…</option>';
+    if (!courseId) return;
+    fetch(`/api/tees/${courseId}`)
+        .then(r => r.json())
+        .then(tees => {
+            tees.forEach(tee => {
+                const opt = document.createElement('option');
+                opt.value = tee.id;
+                opt.textContent = `${tee.tee_name} (${tee.course_rating}/${tee.slope_rating})`;
+                teeSelect.appendChild(opt);
+            });
+        });
+}
+
+function toggleHoles(roundId) {
+    const section = document.getElementById(`holes-${roundId}`);
+    const visible = section.style.display === 'block';
+    section.style.display = visible ? 'none' : 'block';
+    if (!visible) updateTotal(roundId);
+}
+
+function updateTotal(roundId) {
+    const inputs = document.querySelectorAll(`input[data-round="${roundId}"]`);
+    let total = 0;
+    inputs.forEach(input => { total += parseInt(input.value) || 0; });
+    const el = document.getElementById(`total-${roundId}`);
+    if (el) el.textContent = total;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.holes-section').forEach(section => {
+        updateTotal(section.id.replace('holes-', ''));
+    });
+});
+
+// ── Sort rounds ───────────────────────────────────────────────────────────────
+let sortState = { key: 'date', dir: 'desc' };
+
+function sortRounds(key) {
+    const list = document.getElementById('rounds-list');
+    if (!list) return;
+
+    if (sortState.key === key) {
+        sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortState.key = key;
+        sortState.dir = key === 'date' ? 'desc' : 'asc';
+    }
+
+    const pairs = Array.from(list.querySelectorAll('.round-pair'));
+    pairs.sort((a, b) => {
+        let av = a.dataset[key], bv = b.dataset[key];
+        if (key === 'date') {
+            return sortState.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+        } else {
+            return sortState.dir === 'asc' ? parseFloat(av) - parseFloat(bv) : parseFloat(bv) - parseFloat(av);
+        }
+    });
+    pairs.forEach(p => list.appendChild(p));
+
+    document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+    const active = document.getElementById('sort-' + key);
+    if (active) {
+        active.classList.add('active');
+        active.textContent = (key === 'date' ? 'Date' : 'Diff') + (sortState.dir === 'asc' ? ' ↑' : ' ↓');
+    }
+    const otherKey = key === 'date' ? 'diff' : 'date';
+    const other = document.getElementById('sort-' + otherKey);
+    if (other) other.textContent = otherKey === 'date' ? 'Date' : 'Diff';
+}
+</script>
+
+{% endblock %}

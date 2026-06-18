@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a href="{{ url_for('courses') }}" class="page-back">← Back to Courses</a>
+
+<h1 style="margin-bottom:1.5rem;">{{ tee.course_name }} — {{ tee.tee_name }} (Par {{ tee.par }})</h1>
+
+<form method="POST" action="{{ url_for('save_holes', tee_id=tee.id) }}">
+    <section class="card" style="margin-bottom:1.25rem;">
+        <h2>Tee Set Details</h2>
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label>Tee Name</label>
+                <input type="text" name="tee_name" value="{{ tee.tee_name }}" required>
+            </div>
+            <div class="form-group">
+                <label>Gender</label>
+                <select name="gender" required>
+                    <option value="M" {% if tee.gender == 'M' %}selected{% endif %}>Men's</option>
+                    <option value="F" {% if tee.gender == 'F' %}selected{% endif %}>Women's</option>
+                    <option value="Any" {% if tee.gender == 'Any' %}selected{% endif %}>Any</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Course Rating</label>
+                <input type="number" name="course_rating" step="0.1" value="{{ tee.course_rating }}" required>
+            </div>
+            <div class="form-group">
+                <label>Slope Rating</label>
+                <input type="number" name="slope_rating" min="55" max="155" value="{{ tee.slope_rating }}" required>
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Hole Details</h2>
+        <div class="holes-edit-grid">
+            {% for hole in range(1, 19) %}
+                {% set hole_data = holes[hole-1] if hole <= holes|length else {} %}
+                <div class="hole-edit-card">
+                    <h4>Hole {{ hole }}</h4>
+                    <div class="form-group">
+                        <label>Par</label>
+                        <select name="hole_{{ hole }}_par">
+                            <option value="">–</option>
+                            <option value="3" {% if hole_data.get('par') == 3 %}selected{% endif %}>3</option>
+                            <option value="4" {% if hole_data.get('par') == 4 %}selected{% endif %}>4</option>
+                            <option value="5" {% if hole_data.get('par') == 5 %}selected{% endif %}>5</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>HCP</label>
+                        <select name="hole_{{ hole }}_handicap">
+                            <option value="">–</option>
+                            {% for hcp in range(1, 19) %}
+                                <option value="{{ hcp }}" {% if hole_data.get('handicap') == hcp %}selected{% endif %}>{{ hcp }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save Tee Set</button>
+            <a href="{{ url_for('courses') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </section>
+</form>
+
+{% endblock %}
