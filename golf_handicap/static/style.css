@@ -244,33 +244,113 @@ a { color: var(--primary); }
 .handicap-box .value  { font-size: 2.4rem; font-weight: 700; line-height: 1; margin-bottom: 0.2rem; }
 .handicap-box .rounds { font-size: 0.75rem; opacity: 0.75; }
 
-/* ── Handicap snapshots ───────────────────────────────────────────────────── */
-.snapshot-history {
-    margin-top: 0.75rem;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 0.65rem 0.75rem;
-    font-size: 0.82rem;
-    text-align: left;
+/* ── Handicap snapshot card ───────────────────────────────────────────────── */
+.snapshot-card {
+    margin-bottom: 1.5rem;
 }
 
-.snapshot-label {
-    display: block;
-    font-weight: 600;
-    color: var(--text-light);
-    margin-bottom: 0.35rem;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.snapshot-row {
+.snapshot-card-header {
     display: flex;
     justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.15rem 0;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.snapshot-card-header h2 { margin-bottom: 0; }
+
+.snapshot-count {
+    font-size: 0.78rem;
     color: var(--text-light);
+    background: var(--card-alt);
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+/* Sparkline chart */
+.sparkline-container {
+    margin-bottom: 1.25rem;
+    padding: 0.75rem;
+    background: var(--card-alt);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.sparkline-svg {
+    width: 100%;
+    height: 80px;
+    display: block;
+}
+
+.sparkline-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-light);
+    margin-top: 0.4rem;
+    padding: 0 0.25rem;
+}
+
+/* Snapshot table */
+.snapshot-table-header {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr 1fr 0.6fr;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-light);
+    border-bottom: 2px solid var(--border);
+}
+
+.snapshot-table-row {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr 1fr 0.6fr;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    transition: background 0.1s;
+}
+
+.snapshot-table-row:last-child { border-bottom: none; }
+.snapshot-table-row:hover { background: var(--primary-faint); }
+
+.snapshot-date {
+    color: var(--text-light);
+    font-size: 0.82rem;
+}
+
+.snapshot-index {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+}
+
+.snapshot-rounds-count {
+    font-size: 0.82rem;
+    color: var(--text-light);
+    text-align: center;
+}
+
+.trend-down {
+    color: var(--success);
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.trend-up {
+    color: var(--danger);
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.trend-flat {
+    color: var(--text-light);
+    font-size: 0.82rem;
 }
 
 /* ── Rounds section ───────────────────────────────────────────────────────── */

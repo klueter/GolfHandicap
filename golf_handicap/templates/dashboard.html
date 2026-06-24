@@ -19,20 +19,99 @@
         <form method="POST" action="{{ url_for('recalculate_handicap', golfer_id=golfer.id) }}" style="margin-top:0.6rem;">
             <button type="submit" class="btn btn-sm btn-secondary">Recalculate</button>
         </form>
-        {% if snapshots %}
-            <div class="snapshot-history">
-                <span class="snapshot-label">Recent snapshots</span>
-                {% for s in snapshots %}
-                    <div class="snapshot-row">
-                        <span>{{ s.calculated_on }}</span>
-                        <span>{{ s.handicap_index }}</span>
-                        <span class="text-muted">({{ s.rounds_used }})</span>
-                    </div>
-                {% endfor %}
-            </div>
-        {% endif %}
     </div>
 </div>
+
+{% if snapshots %}
+<section class="card snapshot-card">
+    <div class="snapshot-card-header">
+        <h2>Handicap History</h2>
+        <span class="snapshot-count">{{ snapshots|length }} snapshot{{ 's' if snapshots|length != 1 }}</span>
+    </div>
+
+    {% if snapshots|length >= 2 %}
+    <div class="sparkline-container">
+        {% set ns = namespace(min_val=snapshots[0].handicap_index, max_val=snapshots[0].handicap_index) %}
+        {% for s in snapshots %}
+            {% if s.handicap_index < ns.min_val %}{% set ns.min_val = s.handicap_index %}{% endif %}
+            {% if s.handicap_index > ns.max_val %}{% set ns.max_val = s.handicap_index %}{% endif %}
+        {% endfor %}
+        {% set reversed_snapshots = snapshots|reverse|list %}
+        {% set range_val = ns.max_val - ns.min_val %}
+        {% if range_val == 0 %}{% set range_val = 1 %}{% endif %}
+        {% set padding = range_val * 0.15 %}
+        {% set chart_min = ns.min_val - padding %}
+        {% set chart_max = ns.max_val + padding %}
+        {% set chart_range = chart_max - chart_min %}
+
+        <svg class="sparkline-svg" viewBox="0 0 300 80" preserveAspectRatio="none">
+            <!-- Grid lines -->
+            <line x1="0" y1="20" x2="300" y2="20" stroke="#e8e6e1" stroke-width="0.5" stroke-dasharray="4,4"/>
+            <line x1="0" y1="40" x2="300" y2="40" stroke="#e8e6e1" stroke-width="0.5" stroke-dasharray="4,4"/>
+            <line x1="0" y1="60" x2="300" y2="60" stroke="#e8e6e1" stroke-width="0.5" stroke-dasharray="4,4"/>
+
+            <!-- Area fill -->
+            <polygon fill="rgba(31,111,66,0.08)" points="
+                {% for s in reversed_snapshots %}
+                    {{ (loop.index0 / (reversed_snapshots|length - 1)) * 280 + 10 }},{{ 70 - ((s.handicap_index - chart_min) / chart_range) * 60 }}
+                {% endfor %}
+                {{ 280 + 10 }},70 10,70
+            "/>
+
+            <!-- Line -->
+            <polyline fill="none" stroke="#1f6f42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="
+                {% for s in reversed_snapshots %}
+                    {{ (loop.index0 / (reversed_snapshots|length - 1)) * 280 + 10 }},{{ 70 - ((s.handicap_index - chart_min) / chart_range) * 60 }}
+                {% endfor %}
+            "/>
+
+            <!-- Data points -->
+            {% for s in reversed_snapshots %}
+                <circle cx="{{ (loop.index0 / (reversed_snapshots|length - 1)) * 280 + 10 }}"
+                        cy="{{ 70 - ((s.handicap_index - chart_min) / chart_range) * 60 }}"
+                        r="4" fill="white" stroke="#1f6f42" stroke-width="2"/>
+            {% endfor %}
+        </svg>
+
+        <div class="sparkline-labels">
+            <span>{{ reversed_snapshots[0].calculated_on }}</span>
+            <span>{{ reversed_snapshots[-1].calculated_on }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="snapshot-table">
+        <div class="snapshot-table-header">
+            <span>Date</span>
+            <span>Index</span>
+            <span>Change</span>
+            <span>Rounds</span>
+        </div>
+        {% for s in snapshots %}
+            <div class="snapshot-table-row">
+                <span class="snapshot-date">{{ s.calculated_on }}</span>
+                <span class="snapshot-index">{{ s.handicap_index }}</span>
+                <span class="snapshot-change">
+                    {% if not loop.last %}
+                        {% set prev = snapshots[loop.index].handicap_index %}
+                        {% set diff = s.handicap_index - prev %}
+                        {% if diff < 0 %}
+                            <span class="trend-down" title="Improved">&#9660; {{ "%.1f"|format(diff|abs) }}</span>
+                        {% elif diff > 0 %}
+                            <span class="trend-up" title="Went up">&#9650; {{ "%.1f"|format(diff) }}</span>
+                        {% else %}
+                            <span class="trend-flat">&#8212;</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="trend-flat">&#8212;</span>
+                    {% endif %}
+                </span>
+                <span class="snapshot-rounds-count">{{ s.rounds_used }}</span>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 
 <div class="grid grid-2">
     <!-- Record a Round -->
