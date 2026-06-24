@@ -256,22 +256,6 @@ def add_round(golfer_id):
     flash('Round saved. Click "Hole Scores" to enter your strokes.', 'success')
     return redirect(url_for('dashboard', golfer_id=golfer_id))
 
-@app.route('/golfer/<int:golfer_id>/recalculate', methods=['POST'])
-def recalculate_handicap(golfer_id):
-    handicap, rounds_used, _ = calculate_handicap(golfer_id)
-    
-    conn = get_db()
-    if handicap is not None:
-        conn.execute('''
-            INSERT INTO handicap_snapshot (golfer_id, calculated_on, handicap_index, rounds_used)
-            VALUES (?, date('now'), ?, ?)
-        ''', (golfer_id, handicap, rounds_used))
-        conn.commit()
-        flash(f'Handicap recalculated: {handicap} (from {rounds_used} rounds).', 'success')
-    else:
-        flash(f'Need at least 3 rounds to calculate a handicap (you have {rounds_used}).', 'info')
-    conn.close()
-    return redirect(url_for('dashboard', golfer_id=golfer_id))
 
 @app.route('/golfer/<int:golfer_id>/round/<int:round_id>/holes', methods=['POST'])
 def save_hole_scores(golfer_id, round_id):

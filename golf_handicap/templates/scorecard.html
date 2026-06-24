@@ -2,7 +2,10 @@
 
 {% block content %}
 <div class="no-print" style="margin-bottom:1.25rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
-    <a href="{{ url_for('courses') }}" class="page-back">← Back to Courses</a>
+    <a href="{{ url_for('courses') }}" class="page-back">← Courses</a>
+    {% if selected_golfer_id %}
+        <a href="{{ url_for('dashboard', golfer_id=selected_golfer_id) }}" class="page-back">← {{ player.name }}</a>
+    {% endif %}
 
     <form method="GET" action="{{ url_for('scorecard', tee_id=tee.id) }}" style="display:flex; gap:0.5rem; align-items:center; margin-left:auto;">
         <select name="golfer_id" onchange="this.form.submit()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:4px; font-family:inherit; font-size:0.9rem;">

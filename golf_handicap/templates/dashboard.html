@@ -16,9 +16,6 @@
         {% else %}
             <p class="text-muted">Play {{ 3 - rounds_used }} more round{{ 's' if (3 - rounds_used) != 1 }} to calculate handicap</p>
         {% endif %}
-        <form method="POST" action="{{ url_for('recalculate_handicap', golfer_id=golfer.id) }}" style="margin-top:0.6rem;">
-            <button type="submit" class="btn btn-sm btn-secondary">Recalculate</button>
-        </form>
     </div>
 </div>
 
@@ -193,6 +190,7 @@
                                 </div>
                             </div>
                             <div class="round-actions">
+                                <a href="{{ url_for('scorecard', tee_id=round.tee_set_id, golfer_id=golfer.id) }}" class="btn btn-sm btn-secondary">Scorecard</a>
                                 <button type="button" class="btn btn-sm btn-primary" onclick="toggleHoles({{ round.id }})">Holes</button>
                                 <form method="POST" action="{{ url_for('delete_round', golfer_id=golfer.id, round_id=round.id) }}">
                                     <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this round?')">Delete</button>
