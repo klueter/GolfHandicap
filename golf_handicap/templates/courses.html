@@ -48,10 +48,10 @@
 {% if courses %}
     <section class="card">
         <h2>Add Tee Set</h2>
-        <form method="POST" id="tee-form">
+        <form method="POST" action="{{ url_for('add_tee') }}">
             <div class="form-group">
                 <label>Course</label>
-                <select name="course_id" id="course-select" required>
+                <select name="course_id" required>
                     <option value="">Select a course…</option>
                     {% for course in courses %}
                         <option value="{{ course.id }}">{{ course.name }}</option>
@@ -86,12 +86,6 @@
             </div>
             <button type="submit" class="btn btn-primary">Add Tee Set</button>
         </form>
-        <script>
-            document.getElementById('tee-form').addEventListener('submit', function() {
-                const courseId = document.getElementById('course-select').value;
-                this.action = `/course/${courseId}/tee/add`;
-            });
-        </script>
     </section>
 {% endif %}
 
