@@ -63,10 +63,9 @@
                         <td>{{ r.course_name }}{% if r.holes_played == 9 %} <small>({{ r.nine|capitalize }} 9)</small>{% endif %}</td>
                         <td>{{ r.tee_name }}</td>
                         <td class="num">
+                            {{ r.actual_gross_score if r.actual_gross_score else r.adjusted_gross_score }}
                             {% if r.actual_gross_score and r.actual_gross_score != r.adjusted_gross_score %}
-                                {{ r.actual_gross_score }}<small>/{{ r.adjusted_gross_score }}</small>
-                            {% else %}
-                                {{ r.adjusted_gross_score }}
+                                <small class="esc-label">/{{ r.adjusted_gross_score }}</small>
                             {% endif %}
                         </td>
                         <td class="num">{% if r.score_differential is not none %}{{ "%.1f"|format(r.score_differential) }}{% endif %}{% if r.id in used_round_ids %} *{% endif %}</td>
@@ -96,10 +95,9 @@
                         <td>{{ r.course_name }}{% if r.holes_played == 9 %} <small>({{ r.nine|capitalize }} 9)</small>{% endif %}</td>
                         <td>{{ r.tee_name }}</td>
                         <td class="num">
+                            {{ r.actual_gross_score if r.actual_gross_score else r.adjusted_gross_score }}
                             {% if r.actual_gross_score and r.actual_gross_score != r.adjusted_gross_score %}
-                                {{ r.actual_gross_score }}<small>/{{ r.adjusted_gross_score }}</small>
-                            {% else %}
-                                {{ r.adjusted_gross_score }}
+                                <small class="esc-label">/{{ r.adjusted_gross_score }}</small>
                             {% endif %}
                         </td>
                     </tr>
@@ -110,7 +108,7 @@
     </div>
 
     <div class="report-footer">
-        <p>* Rounds used in handicap calculation &nbsp;&bull;&nbsp; Score shown as actual<small>/adjusted</small> when ESC applied</p>
+        <p>* Rounds used in handicap calculation &nbsp;&bull;&nbsp; Score shown as actual<small class="esc-label">/adj</small> when ESC applied</p>
     </div>
 </div>
 {% endblock %}
