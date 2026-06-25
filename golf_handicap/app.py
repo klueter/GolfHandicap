@@ -1,7 +1,8 @@
 import sqlite3
 import os
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
 from datetime import date
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-only-change-in-prod')
@@ -23,6 +24,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             email TEXT UNIQUE,
+            password_hash TEXT,
             member_since DATE DEFAULT (date('now'))
         );
         CREATE TABLE IF NOT EXISTS course (
@@ -125,6 +127,10 @@ def migrate_db():
     for col in ['front_slope', 'back_slope']:
         if col not in tee_cols:
             conn.execute(f"ALTER TABLE tee_set ADD COLUMN {col} INTEGER")
+
+    golfer_cols = [row[1] for row in conn.execute("PRAGMA table_info(golfer)").fetchall()]
+    if 'password_hash' not in golfer_cols:
+        conn.execute("ALTER TABLE golfer ADD COLUMN password_hash TEXT")
 
     hole_cols = [row[1] for row in conn.execute("PRAGMA table_info(hole_score)").fetchall()]
     if 'adjusted_strokes' not in hole_cols:
@@ -247,20 +253,104 @@ def index():
     conn.close()
     return render_template('index.html', golfers=golfers)
 
+@app.route('/rules')
+def rules():
+    return render_template('rules.html')
+
 @app.route('/golfer/add', methods=['POST'])
 def add_golfer():
     name = request.form['name'].strip()
     email = request.form.get('email', '').strip() or None
+    password = request.form.get('password', '').strip()
+    pw_hash = generate_password_hash(password) if password else None
     if name:
         conn = get_db()
-        conn.execute('INSERT INTO golfer (name, email) VALUES (?, ?)', (name, email))
+        conn.execute('INSERT INTO golfer (name, email, password_hash) VALUES (?, ?, ?)', (name, email, pw_hash))
         conn.commit()
         conn.close()
         flash(f'Golfer "{name}" added.', 'success')
     return redirect(url_for('index'))
 
+@app.route('/golfer/<int:golfer_id>/password', methods=['POST'])
+def change_password(golfer_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
+    conn = get_db()
+    golfer = conn.execute('SELECT * FROM golfer WHERE id = ?', (golfer_id,)).fetchone()
+    if not golfer:
+        conn.close()
+        flash('Golfer not found.', 'danger')
+        return redirect(url_for('index'))
+
+    current = request.form.get('current_password', '').strip()
+    new_pw = request.form.get('new_password', '').strip()
+
+    # If a password is already set, verify the current one
+    if golfer['password_hash']:
+        if not check_password_hash(golfer['password_hash'], current):
+            conn.close()
+            flash('Current password is incorrect.', 'danger')
+            return redirect(url_for('dashboard', golfer_id=golfer_id))
+
+    if new_pw:
+        pw_hash = generate_password_hash(new_pw)
+        conn.execute('UPDATE golfer SET password_hash = ? WHERE id = ?', (pw_hash, golfer_id))
+        flash('Password updated.', 'success')
+    else:
+        # Clear password
+        conn.execute('UPDATE golfer SET password_hash = NULL WHERE id = ?', (golfer_id,))
+        session.pop(f'golfer_{golfer_id}', None)
+        flash('Password removed.', 'info')
+    conn.commit()
+    conn.close()
+    return redirect(url_for('dashboard', golfer_id=golfer_id))
+
+@app.route('/golfer/<int:golfer_id>/login', methods=['GET', 'POST'])
+def golfer_login(golfer_id):
+    conn = get_db()
+    golfer = conn.execute('SELECT * FROM golfer WHERE id = ?', (golfer_id,)).fetchone()
+    conn.close()
+    if not golfer:
+        flash('Golfer not found.', 'danger')
+        return redirect(url_for('index'))
+    golfer = dict(golfer)
+
+    # No password set — go straight to dashboard
+    if not golfer.get('password_hash'):
+        session[f'golfer_{golfer_id}'] = True
+        return redirect(url_for('dashboard', golfer_id=golfer_id))
+
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if check_password_hash(golfer['password_hash'], password):
+            session[f'golfer_{golfer_id}'] = True
+            return redirect(url_for('dashboard', golfer_id=golfer_id))
+        else:
+            flash('Incorrect password.', 'danger')
+
+    return render_template('login.html', golfer=golfer)
+
+@app.route('/golfer/<int:golfer_id>/logout')
+def golfer_logout(golfer_id):
+    session.pop(f'golfer_{golfer_id}', None)
+    flash('Logged out.', 'info')
+    return redirect(url_for('index'))
+
+def require_golfer_access(golfer_id):
+    """Check if the session has access to this golfer. Returns redirect if not."""
+    conn = get_db()
+    golfer = conn.execute('SELECT password_hash FROM golfer WHERE id = ?', (golfer_id,)).fetchone()
+    conn.close()
+    if golfer and golfer['password_hash'] and not session.get(f'golfer_{golfer_id}'):
+        return redirect(url_for('golfer_login', golfer_id=golfer_id))
+    return None
+
 @app.route('/golfer/<int:golfer_id>')
 def dashboard(golfer_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
     conn = get_db()
     golfer = conn.execute('SELECT * FROM golfer WHERE id = ?', (golfer_id,)).fetchone()
     golfer = dict(golfer) if golfer else None
@@ -351,8 +441,31 @@ def dashboard(golfer_id):
         snapshots=snapshots,
         today=date.today().isoformat()
     )
+
+@app.route('/golfer/<int:golfer_id>/recalculate', methods=['POST'])
+def recalculate_handicap(golfer_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
+    handicap, rounds_used, _ = calculate_handicap(golfer_id)
+    conn = get_db()
+    if handicap is not None:
+        conn.execute('''
+            INSERT INTO handicap_snapshot (golfer_id, calculated_on, handicap_index, rounds_used)
+            VALUES (?, date('now'), ?, ?)
+        ''', (golfer_id, handicap, rounds_used))
+        conn.commit()
+        flash(f'Handicap recalculated: {handicap} (from {rounds_used} rounds).', 'success')
+    else:
+        flash(f'Need at least 3 rounds to calculate a handicap (you have {rounds_used}).', 'info')
+    conn.close()
+    return redirect(url_for('dashboard', golfer_id=golfer_id))
+
 @app.route('/golfer/<int:golfer_id>/round/add', methods=['POST'])
 def add_round(golfer_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
     tee_set_id = request.form['tee_set_id']
     played_on = request.form['played_on']
     score = request.form.get('adjusted_gross_score', '').strip()
@@ -396,6 +509,9 @@ def add_round(golfer_id):
 
 @app.route('/golfer/<int:golfer_id>/round/<int:round_id>/holes', methods=['POST'])
 def save_hole_scores(golfer_id, round_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
     conn = get_db()
 
     # Get round and tee info
@@ -512,6 +628,9 @@ def save_hole_scores(golfer_id, round_id):
 
 @app.route('/golfer/<int:golfer_id>/round/<int:round_id>/delete', methods=['POST'])
 def delete_round(golfer_id, round_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
     conn = get_db()
     conn.execute('DELETE FROM handicap_snapshot WHERE round_id = ?', (round_id,))
     conn.execute('DELETE FROM hole_score WHERE round_id = ?', (round_id,))
@@ -833,6 +952,9 @@ def scorecard(tee_id):
 
 @app.route('/golfer/<int:golfer_id>/report')
 def player_report(golfer_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
     conn = get_db()
     golfer = conn.execute('SELECT * FROM golfer WHERE id = ?', (golfer_id,)).fetchone()
     golfer = dict(golfer) if golfer else None
@@ -881,6 +1003,16 @@ def player_report(golfer_id):
         by_diff=by_diff,
         today=date.today().isoformat(),
     )
+
+_db_ready = False
+
+@app.before_request
+def ensure_db():
+    global _db_ready
+    if not _db_ready:
+        init_db()
+        migrate_db()
+        _db_ready = True
 
 if __name__ == '__main__':
     init_db()

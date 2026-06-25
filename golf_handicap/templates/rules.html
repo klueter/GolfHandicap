@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="rules-page">
+    <a href="{{ url_for('index') }}" class="page-back">&larr; Back to Home</a>
+
+    <h1>World Handicap System Rules</h1>
+    <p class="rules-intro">This app implements the World Handicap System (WHS) rules effective January 2024. Here's how your handicap index is calculated and what each component means.</p>
+
+    <div class="rules-section">
+        <h2>Score Differential</h2>
+        <p>Every round produces a score differential &mdash; a measure of how you played relative to the course difficulty:</p>
+        <div class="rules-formula">
+            Differential = (Adjusted Gross Score &minus; Course Rating) &times; 113 &divide; Slope Rating
+        </div>
+        <p>A lower differential means a better round. The course rating represents the expected score for a scratch golfer, and the slope rating (55&ndash;155, standard 113) measures how much harder the course plays for a bogey golfer compared to a scratch golfer.</p>
+    </div>
+
+    <div class="rules-section">
+        <h2>Handicap Index Calculation</h2>
+        <p>Your handicap index is based on your best recent differentials, not all of them. The number of differentials used follows a sliding scale:</p>
+        <table class="rules-table">
+            <thead>
+                <tr><th>Rounds Available</th><th>Differentials Used</th><th>Adjustment</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>3</td><td>Lowest 1</td><td>&minus;2.0</td></tr>
+                <tr><td>4</td><td>Lowest 1</td><td>&minus;1.0</td></tr>
+                <tr><td>5</td><td>Lowest 1</td><td>None</td></tr>
+                <tr><td>6</td><td>Lowest 2</td><td>&minus;1.0</td></tr>
+                <tr><td>7&ndash;8</td><td>Lowest 2</td><td>None</td></tr>
+                <tr><td>9&ndash;11</td><td>Lowest 3</td><td>None</td></tr>
+                <tr><td>12&ndash;14</td><td>Lowest 4</td><td>None</td></tr>
+                <tr><td>15&ndash;16</td><td>Lowest 5</td><td>None</td></tr>
+                <tr><td>17&ndash;18</td><td>Lowest 6</td><td>None</td></tr>
+                <tr><td>19</td><td>Lowest 7</td><td>None</td></tr>
+                <tr><td>20</td><td>Lowest 8</td><td>None</td></tr>
+            </tbody>
+        </table>
+        <p>The selected differentials are averaged, the adjustment (if any) is applied, and the result is multiplied by <strong>0.96</strong> to produce the handicap index.</p>
+        <p>With fewer than 3 rounds on record, a provisional index of <strong>54.0</strong> (the maximum) is used.</p>
+    </div>
+
+    <div class="rules-section">
+        <h2>Equitable Stroke Control (ESC)</h2>
+        <p>Before calculating a differential, each hole score is capped at <strong>net double bogey</strong>:</p>
+        <div class="rules-formula">
+            Maximum score per hole = Par + 2 + handicap strokes received on that hole
+        </div>
+        <p>For example, on a par 4 where you receive one handicap stroke, the maximum score used for handicap purposes is 7 (4 + 2 + 1). Your actual score is preserved &mdash; only the adjusted score is used in the differential calculation.</p>
+        <p>When you enter hole-by-hole scores, the app applies ESC automatically and shows both the actual and adjusted totals when they differ.</p>
+    </div>
+
+    <div class="rules-section">
+        <h2>Soft Cap &amp; Hard Cap</h2>
+        <p>Your <strong>Low Handicap Index</strong> (Low HI) is the lowest index you've held in the past 12 months. Two caps prevent your index from rising too far above it:</p>
+        <table class="rules-table">
+            <thead>
+                <tr><th>Condition</th><th>Effect</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Index exceeds Low HI by more than 3.0</td>
+                    <td><strong>Soft cap:</strong> 50% of the excess above 3.0 is removed</td>
+                </tr>
+                <tr>
+                    <td>Index exceeds Low HI by more than 5.0</td>
+                    <td><strong>Hard cap:</strong> index is capped at Low HI + 5.0</td>
+                </tr>
+            </tbody>
+        </table>
+        <p>For example, if your Low HI is 12.0 and your calculated index is 18.5, the soft cap applies first (excess above 15.0 is halved), then the hard cap limits the result to 17.0.</p>
+    </div>
+
+    <div class="rules-section">
+        <h2>Exceptional Score Reduction</h2>
+        <p>When you post an exceptionally good round &mdash; a differential far below your current index &mdash; an additional reduction is applied to all 20 of your most recent differentials:</p>
+        <table class="rules-table">
+            <thead>
+                <tr><th>Gap Below Index</th><th>Reduction Applied</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>7.0 to 9.9 strokes</td><td>&minus;1.0 to each differential</td></tr>
+                <tr><td>10.0 or more strokes</td><td>&minus;2.0 to each differential</td></tr>
+            </tbody>
+        </table>
+        <p>This accelerates the index drop after a breakthrough round. The reduction fades naturally as the adjusted rounds age out of your 20-round window.</p>
+    </div>
+
+    <div class="rules-section">
+        <h2>9-Hole Rounds</h2>
+        <p>You can record front 9 or back 9 rounds. The differential is calculated using the nine-hole course rating and slope for the nine you played. An <strong>expected differential</strong> for the unplayed nine is added:</p>
+        <div class="rules-formula">
+            18-hole differential = 9-hole differential + (Handicap Index &divide; 2)
+        </div>
+        <p>If the course has specific front/back 9-hole ratings and slopes, those are used. Otherwise, the app falls back to half the 18-hole course rating with the full slope.</p>
+    </div>
+
+    <div class="rules-section">
+        <h2>Course Handicap</h2>
+        <p>Your course handicap &mdash; the number of strokes you receive on a specific course &mdash; is calculated as:</p>
+        <div class="rules-formula">
+            Course Handicap = Handicap Index &times; (Slope Rating &divide; 113) + (Course Rating &minus; Par)
+        </div>
+        <p>This adjusts your index for the difficulty of the specific tees you're playing. The result is rounded to the nearest whole number.</p>
+    </div>
+
+    <div class="rules-footer">
+        <p>For the official WHS rules, visit <a href="https://www.usga.org/handicapping.html" target="_blank" rel="noopener">usga.org/handicapping</a>.</p>
+    </div>
+</div>
+{% endblock %}

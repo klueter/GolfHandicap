@@ -61,6 +61,15 @@ Implements the World Handicap System rules effective January 2024:
 - Used rounds highlighted, ESC-adjusted scores shown
 - Print button with optimized CSS for paper output
 
+### Player Passwords
+
+- Optional password protection per golfer
+- Set a password when adding a golfer, or add one later from the dashboard
+- Password-protected golfers require login before accessing the dashboard
+- Golfers without a password go straight through (no interruption)
+- Change or remove password from the dashboard at any time
+- Passwords stored as salted hashes (Werkzeug/scrypt)
+
 ### Handicap History
 
 - Automatic snapshots tied to each round
@@ -145,6 +154,7 @@ golf_handicap/
   templates/
     base.html         # Base layout with nav and favicon
     index.html        # Player list / home
+    login.html        # Password prompt for protected golfers
     dashboard.html    # Player dashboard (rounds, handicap, history)
     courses.html      # Course and tee management
     holes.html        # Hole-by-hole par and handicap editor

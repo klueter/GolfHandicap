@@ -18,6 +18,10 @@
                 <label>Email <span class="text-muted">(optional)</span></label>
                 <input type="email" name="email" placeholder="jane@example.com">
             </div>
+            <div class="form-group">
+                <label>Password <span class="text-muted">(optional)</span></label>
+                <input type="password" name="password" placeholder="Leave blank for no password">
+            </div>
             <button type="submit" class="btn btn-primary">Add Golfer</button>
         </form>
     </section>
@@ -28,8 +32,9 @@
             <ul class="golfer-list">
                 {% for golfer in golfers %}
                     <li>
-                        <a href="{{ url_for('dashboard', golfer_id=golfer.id) }}" class="golfer-link">
+                        <a href="{{ url_for('golfer_login', golfer_id=golfer.id) }}" class="golfer-link">
                             {{ golfer.name }}
+                            {% if golfer.password_hash %}<span class="lock-icon">🔒</span>{% endif %}
                         </a>
                     </li>
                 {% endfor %}
