@@ -40,6 +40,10 @@ def init_db():
             course_rating REAL NOT NULL,
             slope_rating INTEGER NOT NULL,
             par INTEGER NOT NULL,
+            front_rating REAL,
+            front_slope INTEGER,
+            back_rating REAL,
+            back_slope INTEGER,
             hole_handicaps TEXT
         );
         CREATE TABLE IF NOT EXISTS round (
@@ -47,6 +51,8 @@ def init_db():
             golfer_id INTEGER REFERENCES golfer(id),
             tee_set_id INTEGER REFERENCES tee_set(id),
             played_on DATE NOT NULL,
+            holes_played INTEGER DEFAULT 18,
+            nine TEXT CHECK (nine IN ('front','back')),
             adjusted_gross_score INTEGER NOT NULL,
             actual_gross_score INTEGER,
             score_differential REAL,
@@ -106,6 +112,19 @@ def migrate_db():
     if 'exceptional_reduction' not in round_cols:
         conn.execute("ALTER TABLE round ADD COLUMN exceptional_reduction REAL DEFAULT 0")
         conn.execute("UPDATE round SET exceptional_reduction = 0 WHERE exceptional_reduction IS NULL")
+    if 'holes_played' not in round_cols:
+        conn.execute("ALTER TABLE round ADD COLUMN holes_played INTEGER DEFAULT 18")
+        conn.execute("UPDATE round SET holes_played = 18 WHERE holes_played IS NULL")
+    if 'nine' not in round_cols:
+        conn.execute("ALTER TABLE round ADD COLUMN nine TEXT")
+
+    tee_cols = [row[1] for row in conn.execute("PRAGMA table_info(tee_set)").fetchall()]
+    for col in ['front_rating', 'back_rating']:
+        if col not in tee_cols:
+            conn.execute(f"ALTER TABLE tee_set ADD COLUMN {col} REAL")
+    for col in ['front_slope', 'back_slope']:
+        if col not in tee_cols:
+            conn.execute(f"ALTER TABLE tee_set ADD COLUMN {col} INTEGER")
 
     hole_cols = [row[1] for row in conn.execute("PRAGMA table_info(hole_score)").fetchall()]
     if 'adjusted_strokes' not in hole_cols:
@@ -115,6 +134,23 @@ def migrate_db():
 
     conn.commit()
     conn.close()
+
+def get_nine_hole_rating(tee, nine):
+    """Return (rating, slope, par) for a specific nine.
+    Uses explicit front/back values if set, otherwise halves the 18-hole rating."""
+    if nine == 'front' and tee['front_rating'] and tee['front_slope']:
+        rating = tee['front_rating']
+        slope = tee['front_slope']
+    elif nine == 'back' and tee['back_rating'] and tee['back_slope']:
+        rating = tee['back_rating']
+        slope = tee['back_slope']
+    else:
+        # Fallback: half the 18-hole rating, same slope
+        rating = tee['course_rating'] / 2.0
+        slope = tee['slope_rating']
+
+    # 9-hole par from hole data or half total
+    return rating, slope, tee['par'] // 2
 
 def save_snapshot(conn, golfer_id, round_id, played_on):
     """Create or update a handicap snapshot tied to a specific round."""
@@ -321,18 +357,35 @@ def add_round(golfer_id):
     played_on = request.form['played_on']
     score = request.form.get('adjusted_gross_score', '').strip()
     notes = request.form.get('weather_notes', '').strip() or None
+    holes_played = int(request.form.get('holes_played', '18'))
+    nine = request.form.get('nine') or None
+    if holes_played == 18:
+        nine = None
 
     score = int(score) if score else 0
 
     conn = get_db()
     cursor = conn.execute('''
-        INSERT INTO round (golfer_id, tee_set_id, played_on, adjusted_gross_score, actual_gross_score, weather_notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (golfer_id, tee_set_id, played_on, score, score, notes))
+        INSERT INTO round (golfer_id, tee_set_id, played_on, holes_played, nine,
+                           adjusted_gross_score, actual_gross_score, weather_notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (golfer_id, tee_set_id, played_on, holes_played, nine, score, score, notes))
     round_id = cursor.lastrowid
     conn.commit()
 
-    # Auto-snapshot after the round (and its trigger-calculated differential) are committed
+    # For 9-hole rounds, override the trigger-calculated differential
+    if holes_played == 9 and score > 0:
+        tee = dict(conn.execute('SELECT * FROM tee_set WHERE id = ?', (tee_set_id,)).fetchone())
+        rating, slope, nine_par = get_nine_hole_rating(tee, nine)
+        nine_diff = round((score - rating) * 113.0 / slope, 1)
+        # Add expected differential for the unplayed nine (handicap index / 2)
+        handicap, _, _ = calculate_handicap(golfer_id)
+        expected_diff = handicap / 2.0 if handicap else 27.0
+        full_diff = round(nine_diff + expected_diff, 1)
+        conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (full_diff, round_id))
+        conn.commit()
+
+    # Auto-snapshot after the round differential is set
     save_snapshot(conn, golfer_id, round_id, played_on)
     check_exceptional_score(conn, golfer_id, round_id)
     conn.commit()
@@ -344,35 +397,46 @@ def add_round(golfer_id):
 @app.route('/golfer/<int:golfer_id>/round/<int:round_id>/holes', methods=['POST'])
 def save_hole_scores(golfer_id, round_id):
     conn = get_db()
-    
+
     # Get round and tee info
     round_info = conn.execute('''
-        SELECT r.adjusted_gross_score, t.par, t.slope_rating, t.course_rating, t.hole_handicaps, t.id as tee_set_id
+        SELECT r.adjusted_gross_score, r.holes_played, r.nine,
+               t.par, t.slope_rating, t.course_rating, t.hole_handicaps, t.id as tee_set_id,
+               t.front_rating, t.front_slope, t.back_rating, t.back_slope
         FROM round r
         JOIN tee_set t ON r.tee_set_id = t.id
         WHERE r.id = ?
     ''', (round_id,)).fetchone()
-    
+
     if not round_info:
         conn.close()
         flash('Round not found.', 'danger')
         return redirect(url_for('dashboard', golfer_id=golfer_id))
-    
+
+    round_info = dict(round_info)
     total_par = round_info['par']
     slope = round_info['slope_rating']
     course_rating = round_info['course_rating']
     hole_handicaps_str = round_info['hole_handicaps']
     tee_set_id = round_info['tee_set_id']
-    
+    holes_played = round_info['holes_played'] or 18
+    nine = round_info['nine']
+
+    # Determine hole range
+    if holes_played == 9:
+        hole_range = range(1, 10) if nine == 'front' else range(10, 19)
+    else:
+        hole_range = range(1, 19)
+
     # Get player's current handicap index (defaults to 54.0 for new golfers)
     handicap, rounds_used, _ = calculate_handicap(golfer_id)
     course_handicap = round((handicap * slope / 113) + (course_rating - total_par), 0)
-    
+
     # Prefer the detailed hole table (par + handicap per hole) if it's been filled in
     hole_table = conn.execute('SELECT hole_number, par, handicap FROM hole WHERE tee_set_id = ?', (tee_set_id,)).fetchall()
     hole_par_map = {h['hole_number']: h['par'] for h in hole_table}
     hole_hcp_map = {h['hole_number']: h['handicap'] for h in hole_table}
-    
+
     # Fall back to the comma-separated hole_handicaps string, then to a flat 1-18 ranking
     if not hole_hcp_map:
         hole_handicaps = []
@@ -384,13 +448,13 @@ def save_hole_scores(golfer_id, round_id):
         else:
             hole_handicaps = list(range(1, 19))
         hole_hcp_map = {i + 1: hole_handicaps[i] for i in range(min(18, len(hole_handicaps)))}
-    
+
     conn.execute('DELETE FROM hole_score WHERE round_id = ?', (round_id,))
 
     default_par_per_hole = total_par // 18
     actual_total = 0
     adjusted_total = 0
-    for hole_num in range(1, 19):
+    for hole_num in hole_range:
         strokes_key = f'hole_{hole_num}_strokes'
         raw = request.form.get(strokes_key, '').strip()
 
@@ -417,10 +481,19 @@ def save_hole_scores(golfer_id, round_id):
     # actual_gross_score = sum of real strokes; adjusted_gross_score = sum of ESC-capped strokes
     conn.execute('UPDATE round SET actual_gross_score = ?, adjusted_gross_score = ? WHERE id = ?',
                  (actual_total, adjusted_total, round_id))
-    conn.execute('''
-        UPDATE round SET score_differential = ROUND((adjusted_gross_score - ?) * 113.0 / ?, 1)
-        WHERE id = ?
-    ''', (course_rating, slope, round_id))
+
+    # Calculate differential — different for 9 vs 18 hole rounds
+    if holes_played == 9:
+        nine_rating, nine_slope, nine_par = get_nine_hole_rating(round_info, nine)
+        nine_diff = round((adjusted_total - nine_rating) * 113.0 / nine_slope, 1)
+        expected_diff = handicap / 2.0 if handicap else 27.0
+        full_diff = round(nine_diff + expected_diff, 1)
+        conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (full_diff, round_id))
+    else:
+        conn.execute('''
+            UPDATE round SET score_differential = ROUND((adjusted_gross_score - ?) * 113.0 / ?, 1)
+            WHERE id = ?
+        ''', (course_rating, slope, round_id))
     
     conn.commit()
 
@@ -652,19 +725,29 @@ def save_holes(tee_id):
     course_rating = request.form.get('course_rating', '').strip()
     slope_rating = request.form.get('slope_rating', '').strip()
     
+    # 9-hole ratings (optional)
+    front_rating = request.form.get('front_rating', '').strip() or None
+    front_slope = request.form.get('front_slope', '').strip() or None
+    back_rating = request.form.get('back_rating', '').strip() or None
+    back_slope = request.form.get('back_slope', '').strip() or None
+
     if tee_name and gender and course_rating and slope_rating:
         if total_par > 0:
             conn.execute('''
                 UPDATE tee_set
-                SET tee_name = ?, gender = ?, course_rating = ?, slope_rating = ?, par = ?
+                SET tee_name = ?, gender = ?, course_rating = ?, slope_rating = ?, par = ?,
+                    front_rating = ?, front_slope = ?, back_rating = ?, back_slope = ?
                 WHERE id = ?
-            ''', (tee_name, gender, course_rating, slope_rating, total_par, tee_id))
+            ''', (tee_name, gender, course_rating, slope_rating, total_par,
+                  front_rating, front_slope, back_rating, back_slope, tee_id))
         else:
             conn.execute('''
                 UPDATE tee_set
-                SET tee_name = ?, gender = ?, course_rating = ?, slope_rating = ?
+                SET tee_name = ?, gender = ?, course_rating = ?, slope_rating = ?,
+                    front_rating = ?, front_slope = ?, back_rating = ?, back_slope = ?
                 WHERE id = ?
-            ''', (tee_name, gender, course_rating, slope_rating, tee_id))
+            ''', (tee_name, gender, course_rating, slope_rating,
+                  front_rating, front_slope, back_rating, back_slope, tee_id))
     
     conn.commit()
     conn.close()
@@ -746,6 +829,57 @@ def scorecard(tee_id):
         front_par=front_par,
         back_par=back_par,
         selected_golfer_id=golfer_id,
+    )
+
+@app.route('/golfer/<int:golfer_id>/report')
+def player_report(golfer_id):
+    conn = get_db()
+    golfer = conn.execute('SELECT * FROM golfer WHERE id = ?', (golfer_id,)).fetchone()
+    golfer = dict(golfer) if golfer else None
+
+    rounds_data = conn.execute('''
+        SELECT r.*, c.name as course_name, t.tee_name, t.par
+        FROM round r
+        JOIN tee_set t ON r.tee_set_id = t.id
+        JOIN course c ON t.course_id = c.id
+        WHERE r.golfer_id = ?
+        ORDER BY r.played_on DESC
+        LIMIT 20
+    ''', (golfer_id,)).fetchall()
+    rounds = [dict(r) for r in rounds_data]
+
+    low_row = conn.execute('''
+        SELECT MIN(handicap_index) as low_index
+        FROM handicap_snapshot
+        WHERE golfer_id = ? AND calculated_on >= date('now', '-1 year')
+    ''', (golfer_id,)).fetchone()
+    low_index = low_row['low_index'] if low_row else None
+    conn.close()
+
+    handicap, rounds_used, used_round_ids = calculate_handicap(golfer_id)
+
+    capped_handicap = handicap
+    if handicap is not None and low_index is not None:
+        diff = handicap - low_index
+        if diff > 5.0:
+            capped_handicap = round(low_index + 5.0, 1)
+        elif diff > 3.0:
+            capped_handicap = round(low_index + 3.0 + (diff - 3.0) * 0.5, 1)
+
+    by_date = list(rounds)
+    by_diff = sorted([r for r in rounds if r['score_differential'] is not None],
+                     key=lambda r: r['score_differential'])
+
+    return render_template('report.html',
+        golfer=golfer,
+        handicap=capped_handicap,
+        uncapped_handicap=handicap,
+        low_index=low_index,
+        rounds_used=rounds_used,
+        used_round_ids=used_round_ids,
+        by_date=by_date,
+        by_diff=by_diff,
+        today=date.today().isoformat(),
     )
 
 if __name__ == '__main__':

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="report-page">
+    <div class="report-no-print">
+        <a href="{{ url_for('dashboard', golfer_id=golfer.id) }}" class="page-back">&larr; Back to Dashboard</a>
+        <button onclick="window.print()" class="btn btn-primary" style="margin-left:1rem;">Print Report</button>
+    </div>
+
+    <div class="report-header">
+        <div class="report-title">
+            <h1>{{ golfer.name }}</h1>
+            <p class="report-subtitle">Handicap Report &mdash; {{ today }}</p>
+        </div>
+        <div class="report-stats">
+            <div class="report-stat report-stat-main">
+                <span class="report-stat-label">Handicap Index</span>
+                <span class="report-stat-value">{{ handicap }}</span>
+                {% if rounds_used < 3 %}
+                    <span class="report-stat-note">Provisional ({{ rounds_used }}/3)</span>
+                {% else %}
+                    <span class="report-stat-note">{{ rounds_used }} rounds</span>
+                {% endif %}
+            </div>
+            {% if low_index is not none %}
+            <div class="report-stat">
+                <span class="report-stat-label">Low HI (12 mo)</span>
+                <span class="report-stat-value">{{ low_index }}</span>
+            </div>
+            {% endif %}
+            {% if uncapped_handicap is not none and low_index is not none %}
+            <div class="report-stat">
+                <span class="report-stat-label">Cap Applied</span>
+                <span class="report-stat-value{% if uncapped_handicap != handicap %} capped-value{% endif %}">{{ "%.1f"|format(uncapped_handicap - handicap) }}</span>
+            </div>
+            {% endif %}
+            {% if uncapped_handicap is not none and uncapped_handicap != handicap %}
+            <div class="report-stat">
+                <span class="report-stat-label">Uncapped</span>
+                <span class="report-stat-value">{{ uncapped_handicap }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="report-columns">
+        <div class="report-column">
+            <h2>By Date</h2>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Course</th>
+                        <th>Tee</th>
+                        <th class="num">Score</th>
+                        <th class="num">Diff</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in by_date %}
+                    <tr{% if r.id in used_round_ids %} class="report-used"{% endif %}>
+                        <td>{{ r.played_on }}</td>
+                        <td>{{ r.course_name }}{% if r.holes_played == 9 %} <small>({{ r.nine|capitalize }} 9)</small>{% endif %}</td>
+                        <td>{{ r.tee_name }}</td>
+                        <td class="num">
+                            {% if r.actual_gross_score and r.actual_gross_score != r.adjusted_gross_score %}
+                                {{ r.actual_gross_score }}<small>/{{ r.adjusted_gross_score }}</small>
+                            {% else %}
+                                {{ r.adjusted_gross_score }}
+                            {% endif %}
+                        </td>
+                        <td class="num">{% if r.score_differential is not none %}{{ "%.1f"|format(r.score_differential) }}{% endif %}{% if r.id in used_round_ids %} *{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="report-column">
+            <h2>By Differential</h2>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th class="num">Diff</th>
+                        <th>Date</th>
+                        <th>Course</th>
+                        <th>Tee</th>
+                        <th class="num">Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in by_diff %}
+                    <tr{% if r.id in used_round_ids %} class="report-used"{% endif %}>
+                        <td class="num">{{ "%.1f"|format(r.score_differential) }}{% if r.id in used_round_ids %} *{% endif %}</td>
+                        <td>{{ r.played_on }}</td>
+                        <td>{{ r.course_name }}{% if r.holes_played == 9 %} <small>({{ r.nine|capitalize }} 9)</small>{% endif %}</td>
+                        <td>{{ r.tee_name }}</td>
+                        <td class="num">
+                            {% if r.actual_gross_score and r.actual_gross_score != r.adjusted_gross_score %}
+                                {{ r.actual_gross_score }}<small>/{{ r.adjusted_gross_score }}</small>
+                            {% else %}
+                                {{ r.adjusted_gross_score }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="report-footer">
+        <p>* Rounds used in handicap calculation &nbsp;&bull;&nbsp; Score shown as actual<small>/adjusted</small> when ESC applied</p>
+    </div>
+</div>
+{% endblock %}

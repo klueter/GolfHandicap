@@ -5,6 +5,7 @@
     <div>
         <h1>{{ golfer.name }}</h1>
         <p class="member-since">Member since {{ golfer.member_since }}</p>
+        <a href="{{ url_for('player_report', golfer_id=golfer.id) }}" class="btn btn-sm btn-secondary" style="margin-top:0.4rem;">Report</a>
     </div>
     <div class="handicap-box">
         <span class="label">Handicap Index</span>
@@ -143,6 +144,28 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>Holes</label>
+                <div class="toggle-group">
+                    <label class="toggle-option">
+                        <input type="radio" name="holes_played" value="18" checked onchange="toggleNineSelect()"> 18
+                    </label>
+                    <label class="toggle-option">
+                        <input type="radio" name="holes_played" value="9" onchange="toggleNineSelect()"> 9
+                    </label>
+                </div>
+            </div>
+            <div class="form-group" id="nine-select-group" style="display:none;">
+                <label>Which Nine?</label>
+                <div class="toggle-group">
+                    <label class="toggle-option">
+                        <input type="radio" name="nine" value="front" checked> Front 9
+                    </label>
+                    <label class="toggle-option">
+                        <input type="radio" name="nine" value="back"> Back 9
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
                 <label>Date</label>
                 <input type="date" name="played_on" value="{{ today }}" required>
             </div>
@@ -155,6 +178,7 @@
                 <input type="text" name="weather_notes" placeholder="e.g. Windy, Rainy">
             </div>
             <button type="submit" class="btn btn-primary">Save Round</button>
+            <p class="form-note">9-hole rounds use your expected differential for the unplayed nine (WHS 2024).</p>
         </form>
     </section>
 
@@ -187,6 +211,9 @@
                             <div class="round-info">
                                 <strong>{{ round.course_name }}</strong>
                                 <span class="tee-badge">{{ round.tee_name }}</span>
+                                {% if round.holes_played == 9 %}
+                                    <span class="nine-badge">{{ round.nine|capitalize }} 9</span>
+                                {% endif %}
                                 <div class="round-details">
                                     <span>{{ round.played_on }}</span>
                                     {% if round.actual_gross_score and round.actual_gross_score != round.adjusted_gross_score %}
@@ -215,7 +242,7 @@
                         </div>
 
                         <div id="holes-{{ round.id }}" class="holes-section" style="display:none;">
-                            <h4>Hole Scores — Par {{ round.par }}</h4>
+                            <h4>Hole Scores — Par {% if round.holes_played == 9 %}{{ round.par // 2 }}{% else %}{{ round.par }}{% endif %}</h4>
                             <div class="score-display">
                                 Actual: <strong id="total-{{ round.id }}">0</strong>
                                 {% if handicap is not none %}
@@ -224,8 +251,13 @@
                             </div>
                             <p class="esc-info">ESC limits applied (handicap {{ handicap }}{% if rounds_used < 3 %}, provisional{% endif %})</p>
                             <form method="POST" action="{{ url_for('save_hole_scores', golfer_id=golfer.id, round_id=round.id) }}">
-                                <div class="holes-grid">
-                                    {% for hole in range(1, 19) %}
+                                <div class="holes-grid{% if round.holes_played == 9 %} holes-grid-9{% endif %}">
+                                    {% if round.holes_played == 9 and round.nine == 'back' %}
+                                        {% set hole_start = 10 %}
+                                    {% else %}
+                                        {% set hole_start = 1 %}
+                                    {% endif %}
+                                    {% for hole in range(hole_start, hole_start + (round.holes_played or 18)) %}
                                         <div class="hole-input">
                                             <label>{{ hole }}</label>
                                             <div class="hole-par">Par {{ round.par // 18 }}</div>
@@ -260,6 +292,11 @@
 </div>
 
 <script>
+function toggleNineSelect() {
+    const is9 = document.querySelector('input[name="holes_played"]:checked').value === '9';
+    document.getElementById('nine-select-group').style.display = is9 ? '' : 'none';
+}
+
 function loadTees() {
     const courseId = document.getElementById('course-select').value;
     const teeSelect = document.getElementById('tee-select');

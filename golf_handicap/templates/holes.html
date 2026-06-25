@@ -30,6 +30,25 @@
                 <input type="number" name="slope_rating" min="55" max="155" value="{{ tee.slope_rating }}" required>
             </div>
         </div>
+        <h3 style="margin-top:1rem; margin-bottom:0.5rem;">9-Hole Ratings <span class="text-muted" style="font-weight:normal; font-size:0.8rem;">(optional — for 9-hole rounds)</span></h3>
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label>Front 9 Rating</label>
+                <input type="number" name="front_rating" step="0.1" value="{{ tee.front_rating or '' }}" placeholder="e.g. 35.2">
+            </div>
+            <div class="form-group">
+                <label>Front 9 Slope</label>
+                <input type="number" name="front_slope" min="55" max="155" value="{{ tee.front_slope or '' }}" placeholder="e.g. 128">
+            </div>
+            <div class="form-group">
+                <label>Back 9 Rating</label>
+                <input type="number" name="back_rating" step="0.1" value="{{ tee.back_rating or '' }}" placeholder="e.g. 36.1">
+            </div>
+            <div class="form-group">
+                <label>Back 9 Slope</label>
+                <input type="number" name="back_slope" min="55" max="155" value="{{ tee.back_slope or '' }}" placeholder="e.g. 131">
+            </div>
+        </div>
     </section>
 
     <section class="card">
