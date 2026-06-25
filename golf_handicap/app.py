@@ -6,7 +6,7 @@ from datetime import date
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-only-change-in-prod')
 
-DB_PATH = os.path.expanduser('~/golf_handicap.db')
+DB_PATH = os.environ.get('DB_PATH', os.path.expanduser('~/golf_handicap.db'))
 
 def get_db():
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -48,7 +48,9 @@ def init_db():
             tee_set_id INTEGER REFERENCES tee_set(id),
             played_on DATE NOT NULL,
             adjusted_gross_score INTEGER NOT NULL,
+            actual_gross_score INTEGER,
             score_differential REAL,
+            exceptional_reduction REAL DEFAULT 0,
             weather_notes TEXT
         );
         CREATE TABLE IF NOT EXISTS hole_score (
@@ -57,6 +59,7 @@ def init_db():
             hole_number INTEGER CHECK (hole_number BETWEEN 1 AND 18),
             par INTEGER,
             strokes INTEGER NOT NULL,
+            adjusted_strokes INTEGER,
             putts INTEGER
         );
         CREATE TABLE IF NOT EXISTS hole (
@@ -90,12 +93,27 @@ def init_db():
     conn.close()
 
 def migrate_db():
-    """Add round_id column to handicap_snapshot if it doesn't exist yet."""
+    """Add new columns to existing databases."""
     conn = get_db()
-    cols = [row[1] for row in conn.execute("PRAGMA table_info(handicap_snapshot)").fetchall()]
-    if 'round_id' not in cols:
+    snap_cols = [row[1] for row in conn.execute("PRAGMA table_info(handicap_snapshot)").fetchall()]
+    if 'round_id' not in snap_cols:
         conn.execute("ALTER TABLE handicap_snapshot ADD COLUMN round_id INTEGER REFERENCES round(id)")
-        conn.commit()
+
+    round_cols = [row[1] for row in conn.execute("PRAGMA table_info(round)").fetchall()]
+    if 'actual_gross_score' not in round_cols:
+        conn.execute("ALTER TABLE round ADD COLUMN actual_gross_score INTEGER")
+        conn.execute("UPDATE round SET actual_gross_score = adjusted_gross_score WHERE actual_gross_score IS NULL")
+    if 'exceptional_reduction' not in round_cols:
+        conn.execute("ALTER TABLE round ADD COLUMN exceptional_reduction REAL DEFAULT 0")
+        conn.execute("UPDATE round SET exceptional_reduction = 0 WHERE exceptional_reduction IS NULL")
+
+    hole_cols = [row[1] for row in conn.execute("PRAGMA table_info(hole_score)").fetchall()]
+    if 'adjusted_strokes' not in hole_cols:
+        conn.execute("ALTER TABLE hole_score ADD COLUMN adjusted_strokes INTEGER")
+        # Backfill: existing strokes are the adjusted values, copy them
+        conn.execute("UPDATE hole_score SET adjusted_strokes = strokes WHERE adjusted_strokes IS NULL")
+
+    conn.commit()
     conn.close()
 
 def save_snapshot(conn, golfer_id, round_id, played_on):
@@ -117,30 +135,72 @@ def save_snapshot(conn, golfer_id, round_id, played_on):
                 VALUES (?, ?, ?, ?, ?)
             ''', (golfer_id, round_id, played_on, handicap, rounds_used))
 
+def check_exceptional_score(conn, golfer_id, round_id):
+    """WHS Exceptional Score Reduction: when a differential is far below
+    the player's index at the time of play, apply -1 or -2 to all 20
+    most recent differentials. New rounds posted later won't carry the
+    adjustment, so the effect fades as adjusted rounds age out."""
+    handicap, _, _ = calculate_handicap(golfer_id)
+    if handicap is None:
+        return
+
+    row = conn.execute('SELECT score_differential FROM round WHERE id = ?', (round_id,)).fetchone()
+    if not row or row['score_differential'] is None:
+        return
+
+    gap = handicap - row['score_differential']
+    if gap >= 10.0:
+        reduction = -2.0
+    elif gap >= 7.0:
+        reduction = -1.0
+    else:
+        return
+
+    # Apply to all 20 most recent rounds — take the stronger (more negative) reduction
+    recent_ids = [r['id'] for r in conn.execute('''
+        SELECT id FROM round WHERE golfer_id = ?
+        ORDER BY played_on DESC LIMIT 20
+    ''', (golfer_id,)).fetchall()]
+
+    for rid in recent_ids:
+        conn.execute('''
+            UPDATE round SET exceptional_reduction = MIN(exceptional_reduction, ?)
+            WHERE id = ? AND (exceptional_reduction IS NULL OR exceptional_reduction > ?)
+        ''', (reduction, rid, reduction))
+
 def calculate_handicap(golfer_id):
     conn = get_db()
     rows = conn.execute('''
-        SELECT id, score_differential FROM round
+        SELECT id, score_differential, exceptional_reduction FROM round
         WHERE golfer_id = ?
         ORDER BY played_on DESC LIMIT 20
     ''', (golfer_id,)).fetchall()
     conn.close()
 
-    valid = [(r['id'], r['score_differential']) for r in rows if r['score_differential'] is not None]
+    valid = [(r['id'], r['score_differential'], r['exceptional_reduction'] or 0)
+             for r in rows if r['score_differential'] is not None]
     n = len(valid)
     if n < 3:
-        return None, n, set()
+        # USGA max index of 54.0 until enough rounds are posted
+        return 54.0, n, set()
 
     # WHS sliding scale
     use = {3:1, 4:1, 5:1, 6:2, 7:2, 8:2, 9:3, 10:3, 11:3, 12:4, 13:4, 14:4,
            15:5, 16:5, 17:6, 18:6, 19:7}.get(n, 8)
 
-    # Sort by differential ascending; take the best `use` rounds
-    sorted_valid = sorted(valid, key=lambda x: x[1])
+    # Apply exceptional reduction to each differential before sorting
+    adjusted_valid = [(rid, diff + red, red) for rid, diff, red in valid]
+
+    # Sort by adjusted differential ascending; take the best `use` rounds
+    sorted_valid = sorted(adjusted_valid, key=lambda x: x[1])
     used_ids = {row[0] for row in sorted_valid[:use]}
 
     avg = sum(row[1] for row in sorted_valid[:use]) / use
-    return round(avg * 0.96, 1), n, used_ids
+
+    # WHS sliding scale adjustments for small samples
+    adjustment = {3: -2.0, 4: -1.0, 6: -1.0}.get(n, 0)
+
+    return round((avg + adjustment) * 0.96, 1), n, used_ids
 
 # ── Routes ──────────────────────────────────────────────────────────────────
 
@@ -185,15 +245,17 @@ def dashboard(golfer_id):
     for r in rounds_data:
         round_dict = dict(r)
         
-        # === THIS IS THE IMPORTANT PART ===
         hole_scores_data = conn.execute('''
-            SELECT hole_number, strokes 
-            FROM hole_score 
+            SELECT hole_number, strokes, adjusted_strokes
+            FROM hole_score
             WHERE round_id = ?
         ''', (round_dict['id'],)).fetchall()
-        
-        round_dict['hole_scores'] = {row['hole_number']: row['strokes'] 
+
+        # hole_scores: actual strokes (for editing); adjusted_scores: ESC-capped
+        round_dict['hole_scores'] = {row['hole_number']: row['strokes']
                                      for row in hole_scores_data}
+        round_dict['adjusted_scores'] = {row['hole_number']: row['adjusted_strokes']
+                                         for row in hole_scores_data}
         # ===================================
         
         rounds.append(round_dict)
@@ -212,21 +274,42 @@ def dashboard(golfer_id):
     snapshots_data = conn.execute('''
         SELECT calculated_on, handicap_index, rounds_used
         FROM handicap_snapshot
-        WHERE golfer_id = ?
+        WHERE golfer_id = ? AND calculated_on >= date('now', '-1 year')
         ORDER BY calculated_on DESC, id DESC
         LIMIT 10
     ''', (golfer_id,)).fetchall()
     snapshots = [dict(s) for s in snapshots_data]
-    
+
+    # Low Handicap Index from the past 365 days (WHS soft/hard cap)
+    low_row = conn.execute('''
+        SELECT MIN(handicap_index) as low_index
+        FROM handicap_snapshot
+        WHERE golfer_id = ? AND calculated_on >= date('now', '-1 year')
+    ''', (golfer_id,)).fetchone()
+    low_index = low_row['low_index'] if low_row else None
+
     conn.close()
 
     handicap, rounds_used, used_round_ids = calculate_handicap(golfer_id)
+
+    # Apply WHS soft cap / hard cap based on Low HI
+    capped_handicap = handicap
+    if handicap is not None and low_index is not None:
+        diff = handicap - low_index
+        if diff > 5.0:
+            # Hard cap: cannot exceed Low HI + 5.0
+            capped_handicap = round(low_index + 5.0, 1)
+        elif diff > 3.0:
+            # Soft cap: 50% of excess above 3.0
+            capped_handicap = round(low_index + 3.0 + (diff - 3.0) * 0.5, 1)
 
     return render_template('dashboard.html',
         golfer=golfer,
         rounds=rounds,
         courses=courses,
-        handicap=handicap,
+        handicap=capped_handicap,
+        uncapped_handicap=handicap,
+        low_index=low_index,
         rounds_used=rounds_used,
         used_round_ids=used_round_ids,
         snapshots=snapshots,
@@ -243,14 +326,15 @@ def add_round(golfer_id):
 
     conn = get_db()
     cursor = conn.execute('''
-        INSERT INTO round (golfer_id, tee_set_id, played_on, adjusted_gross_score, weather_notes)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (golfer_id, tee_set_id, played_on, score, notes))
+        INSERT INTO round (golfer_id, tee_set_id, played_on, adjusted_gross_score, actual_gross_score, weather_notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (golfer_id, tee_set_id, played_on, score, score, notes))
     round_id = cursor.lastrowid
     conn.commit()
 
     # Auto-snapshot after the round (and its trigger-calculated differential) are committed
     save_snapshot(conn, golfer_id, round_id, played_on)
+    check_exceptional_score(conn, golfer_id, round_id)
     conn.commit()
     conn.close()
     flash('Round saved. Click "Hole Scores" to enter your strokes.', 'success')
@@ -280,17 +364,9 @@ def save_hole_scores(golfer_id, round_id):
     hole_handicaps_str = round_info['hole_handicaps']
     tee_set_id = round_info['tee_set_id']
     
-    # Get player's current handicap index
+    # Get player's current handicap index (defaults to 54.0 for new golfers)
     handicap, rounds_used, _ = calculate_handicap(golfer_id)
-    
-    # ESC only applies once a handicap index actually exists (3+ prior rounds).
-    # Before that, course_handicap is undefined, so don't cap anything.
-    apply_esc = handicap is not None
-    
-    if apply_esc:
-        course_handicap = round((handicap * slope / 113) + (course_rating - total_par), 0)
-    else:
-        course_handicap = None
+    course_handicap = round((handicap * slope / 113) + (course_rating - total_par), 0)
     
     # Prefer the detailed hole table (par + handicap per hole) if it's been filled in
     hole_table = conn.execute('SELECT hole_number, par, handicap FROM hole WHERE tee_set_id = ?', (tee_set_id,)).fetchall()
@@ -310,39 +386,37 @@ def save_hole_scores(golfer_id, round_id):
         hole_hcp_map = {i + 1: hole_handicaps[i] for i in range(min(18, len(hole_handicaps)))}
     
     conn.execute('DELETE FROM hole_score WHERE round_id = ?', (round_id,))
-    
+
     default_par_per_hole = total_par // 18
-    total_strokes = 0
+    actual_total = 0
+    adjusted_total = 0
     for hole_num in range(1, 19):
         strokes_key = f'hole_{hole_num}_strokes'
-        strokes = request.form.get(strokes_key, '').strip()
-        
-        if strokes:
+        raw = request.form.get(strokes_key, '').strip()
+
+        if raw:
             try:
-                strokes = int(strokes)
+                actual = int(raw)
                 par_per_hole = hole_par_map.get(hole_num, default_par_per_hole)
-                
-                if apply_esc:
-                    # Determine if player gets a stroke on this hole
-                    hole_hcp = hole_hcp_map.get(hole_num, hole_num)
-                    gets_stroke = hole_hcp <= course_handicap
-                    
-                    # ESC limit: Par + 2 (net double bogey) + strokes player gets on hole
-                    esc_limit = par_per_hole + 2 + (1 if gets_stroke else 0)
-                    
-                    strokes = min(strokes, esc_limit)
-                
-                total_strokes += strokes
-                
+                # ESC: net double bogey limit
+                hole_hcp = hole_hcp_map.get(hole_num, hole_num)
+                gets_stroke = hole_hcp <= course_handicap
+                esc_limit = par_per_hole + 2 + (1 if gets_stroke else 0)
+                adjusted = min(actual, esc_limit)
+
+                actual_total += actual
+                adjusted_total += adjusted
+
                 conn.execute('''
-                    INSERT INTO hole_score (round_id, hole_number, par, strokes)
-                    VALUES (?, ?, ?, ?)
-                ''', (round_id, hole_num, par_per_hole, strokes))
+                    INSERT INTO hole_score (round_id, hole_number, par, strokes, adjusted_strokes)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (round_id, hole_num, par_per_hole, actual, adjusted))
             except ValueError:
                 pass
-    
-    # Recalculate total score and differential from hole scores
-    conn.execute('UPDATE round SET adjusted_gross_score = ? WHERE id = ?', (total_strokes, round_id))
+
+    # actual_gross_score = sum of real strokes; adjusted_gross_score = sum of ESC-capped strokes
+    conn.execute('UPDATE round SET actual_gross_score = ?, adjusted_gross_score = ? WHERE id = ?',
+                 (actual_total, adjusted_total, round_id))
     conn.execute('''
         UPDATE round SET score_differential = ROUND((adjusted_gross_score - ?) * 113.0 / ?, 1)
         WHERE id = ?
@@ -353,13 +427,14 @@ def save_hole_scores(golfer_id, round_id):
     # Update the snapshot tied to this round with the new differential
     played_on = conn.execute('SELECT played_on FROM round WHERE id = ?', (round_id,)).fetchone()['played_on']
     save_snapshot(conn, golfer_id, round_id, played_on)
+    check_exceptional_score(conn, golfer_id, round_id)
     conn.commit()
 
     conn.close()
-    if apply_esc:
-        flash(f'Hole scores saved. Total score: {total_strokes} (ESC applied).', 'success')
+    if actual_total != adjusted_total:
+        flash(f'Hole scores saved. Actual: {actual_total}, Adjusted: {adjusted_total} (ESC applied).', 'success')
     else:
-        flash(f'Hole scores saved. Total score: {total_strokes} (raw score \u2014 ESC starts after 3 rounds).', 'success')
+        flash(f'Hole scores saved. Total score: {actual_total}.', 'success')
     return redirect(url_for('dashboard', golfer_id=golfer_id))
 
 @app.route('/golfer/<int:golfer_id>/round/<int:round_id>/delete', methods=['POST'])

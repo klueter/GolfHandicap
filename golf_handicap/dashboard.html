@@ -6,29 +6,29 @@
         <h1>{{ golfer.name }}</h1>
         <p class="member-since">Member since {{ golfer.member_since }}</p>
     </div>
-    <div class="handicap-box">
-        <span class="label">Handicap Index</span>
-        <span class="value">{{ handicap }}</span>
-        {% if rounds_used < 3 %}
-            <span class="rounds">Provisional ({{ rounds_used }}/3 rounds)</span>
-        {% else %}
+    {% if handicap is not none %}
+        <div class="handicap-box">
+            <span class="label">Handicap Index</span>
+            <span class="value">{{ handicap }}</span>
             <span class="rounds">{{ rounds_used }} rounds</span>
-        {% endif %}
-    </div>
-    <div class="handicap-sidebar">
-        {% if low_index is not none %}
-            <div class="handicap-stat">
-                <span class="handicap-stat-label">Low HI</span>
-                <span class="handicap-stat-value">{{ low_index }}</span>
-            </div>
-        {% endif %}
-        {% if low_index is not none %}
-            <div class="handicap-stat">
-                <span class="handicap-stat-label">Cap</span>
-                <span class="handicap-stat-value{% if uncapped_handicap != handicap %} capped-value{% endif %}">{{ "%.1f"|format(uncapped_handicap - handicap) }}</span>
-            </div>
-        {% endif %}
-    </div>
+        </div>
+        <div class="handicap-sidebar">
+            {% if low_index is not none %}
+                <div class="handicap-stat">
+                    <span class="handicap-stat-label">Low HI</span>
+                    <span class="handicap-stat-value">{{ low_index }}</span>
+                </div>
+            {% endif %}
+            {% if low_index is not none %}
+                <div class="handicap-stat">
+                    <span class="handicap-stat-label">Cap</span>
+                    <span class="handicap-stat-value{% if uncapped_handicap != handicap %} capped-value{% endif %}">{{ "%.1f"|format(uncapped_handicap - handicap) }}</span>
+                </div>
+            {% endif %}
+        </div>
+    {% else %}
+        <p class="text-muted">Play {{ 3 - rounds_used }} more round{{ 's' if (3 - rounds_used) != 1 }} to calculate handicap</p>
+    {% endif %}
 </div>
 
 {% if snapshots %}
@@ -222,7 +222,11 @@
                                     <span class="adjusted-total">Adjusted: <strong id="adj-total-{{ round.id }}">0</strong></span>
                                 {% endif %}
                             </div>
-                            <p class="esc-info">ESC limits applied (handicap {{ handicap }}{% if rounds_used < 3 %}, provisional{% endif %})</p>
+                            {% if handicap is not none %}
+                                <p class="esc-info">ESC limits applied (handicap {{ handicap }})</p>
+                            {% else %}
+                                <p class="esc-info">ESC limits start after 3 rounds</p>
+                            {% endif %}
                             <form method="POST" action="{{ url_for('save_hole_scores', golfer_id=golfer.id, round_id=round.id) }}">
                                 <div class="holes-grid">
                                     {% for hole in range(1, 19) %}
