@@ -42,7 +42,9 @@ a { color: var(--primary); }
     color: white;
     padding: 0.85rem 0;
     box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-    margin-bottom: 2rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 
 .navbar .nav-container {
@@ -82,7 +84,7 @@ a { color: var(--primary); }
 .container {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 0 1.25rem 3rem;
+    padding: 2rem 1.25rem 3rem;
 }
 
 .grid {
@@ -244,6 +246,104 @@ a { color: var(--primary); }
 .handicap-box .value  { font-size: 2.4rem; font-weight: 700; line-height: 1; margin-bottom: 0.2rem; }
 .handicap-box .rounds { font-size: 0.75rem; opacity: 0.75; }
 
+/* ── Handicap stats (Low HI, Cap, Uncapped) ──────────────────────────────── */
+.handicap-stats {
+    text-align: right;
+    min-width: 130px;
+}
+
+.stat-item {
+    margin-bottom: 0.4rem;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-light);
+}
+
+.stat-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.capped-value {
+    color: var(--danger);
+}
+
+/* ── Toggle group (18/9, Front/Back) ─────────────────────────────────────── */
+.toggle-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.toggle-option {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.88rem;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.toggle-option:has(input:checked) {
+    background: var(--primary-faint);
+    border-color: var(--primary);
+    font-weight: 600;
+}
+
+.toggle-option input[type="radio"] {
+    margin: 0;
+}
+
+/* ── Nine badge ──────────────────────────────────────────────────────────── */
+.nine-badge {
+    display: inline-block;
+    background: #e3f2fd;
+    color: #1565c0;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.45rem;
+    border-radius: var(--radius-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* ── ESC adjusted indicator on holes ─────────────────────────────────────── */
+.esc-adjusted {
+    font-size: 0.7rem;
+    color: var(--danger);
+    font-weight: 600;
+    margin-top: 0.15rem;
+}
+
+/* ── Adjusted running total ──────────────────────────────────────────────── */
+.adjusted-total {
+    color: var(--danger);
+    margin-left: 1rem;
+    font-size: 0.9rem;
+}
+
+/* ── 9-hole grid (3 columns) ─────────────────────────────────────────────── */
+.holes-grid-9 {
+    grid-template-columns: repeat(3, 1fr) !important;
+    max-width: 320px;
+}
+
+/* ── Form note ───────────────────────────────────────────────────────────── */
+.form-note {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin: 0.5rem 0 1rem;
+    font-style: italic;
+}
+
 /* ── Handicap snapshots ───────────────────────────────────────────────────── */
 .snapshot-history {
     margin-top: 0.75rem;
@@ -271,6 +371,61 @@ a { color: var(--primary); }
     gap: 0.5rem;
     padding: 0.15rem 0;
     color: var(--text-light);
+}
+
+.snapshot-improved { color: var(--success); }
+.snapshot-wentup   { color: var(--danger); }
+
+.snapshot-arrow {
+    font-size: 0.65rem;
+    line-height: 1;
+}
+.snapshot-down { color: var(--success); }
+.snapshot-up   { color: var(--danger); }
+
+/* ── Sparkline chart ─────────────────────────────────────────────────────── */
+.handicap-chart {
+    position: relative;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem 0.6rem;
+    margin-bottom: 1.5rem;
+}
+
+.sparkline {
+    width: 100%;
+    height: 100px;
+    display: block;
+}
+
+.sparkline-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.68rem;
+    color: var(--text-light);
+    margin-top: 0.3rem;
+    padding: 0 0.2rem;
+}
+
+.sparkline-date {
+    flex: 1;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.sparkline-range {
+    position: absolute;
+    top: 1.8rem;
+    right: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100px;
+    font-size: 0.68rem;
+    color: var(--text-light);
+    text-align: right;
+    pointer-events: none;
 }
 
 /* ── Rounds section ───────────────────────────────────────────────────────── */
@@ -344,6 +499,23 @@ a { color: var(--primary); }
 }
 
 .weather { font-style: italic; }
+
+/* ESC label in round details */
+.esc-label {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+/* Exceptional reduction badge in round details */
+.reduction-badge {
+    background: #fff3cd;
+    color: #856404;
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 8px;
+    white-space: nowrap;
+}
 
 /* ── Badges ───────────────────────────────────────────────────────────────── */
 .badge {
@@ -708,6 +880,8 @@ a { color: var(--primary); }
     .handicap-display { text-align: left; width: 100%; }
     .handicap-box { flex-direction: row; gap: 1rem; padding: 1rem; }
     .handicap-box .value { font-size: 1.8rem; }
+    .handicap-stats { text-align: left; width: 100%; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .dashboard-actions { flex-wrap: wrap; }
 
     .round-item { flex-direction: column; gap: 0.5rem; }
     .round-actions { flex-direction: row; }
@@ -720,8 +894,154 @@ a { color: var(--primary); }
 }
 
 /* ── Print ────────────────────────────────────────────────────────────────── */
+/* ── Report Page ──────────────────────────────────────────────────────────── */
+.report-page {
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.report-no-print {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 2px solid var(--border);
+}
+
+.report-title h1 {
+    font-size: 1.8rem;
+    color: var(--primary);
+}
+
+.report-subtitle {
+    color: var(--text-light);
+    font-size: 0.9rem;
+    margin-top: 0.2rem;
+}
+
+.report-stats {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.report-stat {
+    text-align: center;
+    min-width: 80px;
+}
+
+.report-stat-main {
+    background: var(--primary);
+    color: white;
+    padding: 0.8rem 1.2rem;
+    border-radius: var(--radius-lg);
+    min-width: 120px;
+}
+
+.report-stat-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.85;
+    margin-bottom: 0.2rem;
+}
+
+.report-stat-value {
+    display: block;
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.report-stat:not(.report-stat-main) .report-stat-value {
+    color: var(--primary);
+    font-size: 1.3rem;
+}
+
+.report-stat-note {
+    display: block;
+    font-size: 0.7rem;
+    opacity: 0.75;
+    margin-top: 0.15rem;
+}
+
+.report-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.report-column h2 {
+    font-size: 1.1rem;
+    color: var(--primary);
+    margin-bottom: 0.6rem;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.report-table th {
+    background: var(--primary);
+    color: white;
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.report-table th:first-child { border-radius: var(--radius) 0 0 0; }
+.report-table th:last-child  { border-radius: 0 var(--radius) 0 0; }
+
+.report-table td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.report-table .num {
+    text-align: right;
+}
+
+.report-used {
+    background: #f0f8f4;
+    font-weight: 600;
+}
+
+.report-table small {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.report-footer {
+    text-align: center;
+    color: var(--text-light);
+    font-size: 0.8rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+}
+
+.report-footer small {
+    color: var(--danger);
+}
+
+/* ── Print styles ────────────────────────────────────────────────────────── */
 @media print {
     .no-print,
+    .report-no-print,
     .navbar,
     .footer { display: none !important; }
 
@@ -729,6 +1049,15 @@ a { color: var(--primary); }
 
     .container { padding: 0; max-width: 100%; }
 
+    /* Report print */
+    .report-page { max-width: 100%; }
+    .report-header { border-bottom-color: #ccc; }
+    .report-stat-main { background: #1f6f42 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .report-table th { background: #1f6f42 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .report-used { background: #f0f8f4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .report-columns { gap: 1rem; }
+
+    /* Scorecard print */
     .scorecard-wrap {
         border: none;
         padding: 0;

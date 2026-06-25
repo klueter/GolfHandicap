@@ -6,6 +6,10 @@
         <h1>{{ golfer.name }}</h1>
         <p class="member-since">Member since {{ golfer.member_since }}</p>
         <div class="dashboard-actions">
+            <a href="{{ url_for('player_report', golfer_id=golfer.id) }}" class="btn btn-sm btn-secondary">Player Report</a>
+            <form method="POST" action="{{ url_for('recalculate_handicap', golfer_id=golfer.id) }}" style="margin:0;">
+                <button type="submit" class="btn btn-sm btn-secondary">Recalculate</button>
+            </form>
             <button class="btn btn-sm btn-secondary" onclick="document.getElementById('pw-section').style.display = document.getElementById('pw-section').style.display === 'none' ? 'block' : 'none';">{{ '🔒 Change Password' if golfer.password_hash else '🔓 Set Password' }}</button>
             {% if golfer.password_hash %}
                 <a href="{{ url_for('golfer_logout', golfer_id=golfer.id) }}" class="btn btn-sm btn-secondary">Logout</a>
@@ -17,28 +21,91 @@
             <div class="handicap-box">
                 <span class="label">Handicap Index</span>
                 <span class="value">{{ handicap }}</span>
-                <span class="rounds">{{ rounds_used }} rounds</span>
+                {% if rounds_used < 3 %}
+                    <span class="rounds">Provisional ({{ rounds_used }}/3)</span>
+                {% else %}
+                    <span class="rounds">{{ rounds_used }} rounds</span>
+                {% endif %}
             </div>
         {% else %}
             <p class="text-muted">Play {{ 3 - rounds_used }} more round{{ 's' if (3 - rounds_used) != 1 }} to calculate handicap</p>
         {% endif %}
-        <form method="POST" action="{{ url_for('recalculate_handicap', golfer_id=golfer.id) }}" style="margin-top:0.6rem;">
-            <button type="submit" class="btn btn-sm btn-secondary">Recalculate</button>
-        </form>
-        {% if snapshots %}
-            <div class="snapshot-history">
-                <span class="snapshot-label">Recent snapshots</span>
-                {% for s in snapshots %}
-                    <div class="snapshot-row">
-                        <span>{{ s.calculated_on }}</span>
-                        <span>{{ s.handicap_index }}</span>
-                        <span class="text-muted">({{ s.rounds_used }})</span>
-                    </div>
-                {% endfor %}
+    </div>
+    <div class="handicap-stats">
+        {% if low_index is not none %}
+            <div class="stat-item">
+                <span class="stat-label">Low HI (12 mo)</span>
+                <span class="stat-value">{{ low_index }}</span>
+            </div>
+        {% endif %}
+        {% if uncapped_handicap is not none and low_index is not none %}
+            <div class="stat-item">
+                <span class="stat-label">Cap Applied</span>
+                <span class="stat-value{% if uncapped_handicap != handicap %} capped-value{% endif %}">{{ "%.1f"|format(uncapped_handicap - handicap) }}</span>
+            </div>
+        {% endif %}
+        {% if uncapped_handicap is not none and uncapped_handicap != handicap %}
+            <div class="stat-item">
+                <span class="stat-label">Uncapped</span>
+                <span class="stat-value">{{ uncapped_handicap }}</span>
             </div>
         {% endif %}
     </div>
 </div>
+
+{% if snapshots and snapshots|length > 1 %}
+<div class="handicap-chart">
+    <span class="snapshot-label">Handicap Trend</span>
+    {% set ns = namespace(min_val=snapshots[0].handicap_index, max_val=snapshots[0].handicap_index) %}
+    {% for s in snapshots %}
+        {% if s.handicap_index < ns.min_val %}{% set ns.min_val = s.handicap_index %}{% endif %}
+        {% if s.handicap_index > ns.max_val %}{% set ns.max_val = s.handicap_index %}{% endif %}
+    {% endfor %}
+    {% set range_val = ns.max_val - ns.min_val if ns.max_val != ns.min_val else 1 %}
+    {% set reversed_snaps = snapshots|reverse|list %}
+    <svg class="sparkline" viewBox="0 0 600 80" preserveAspectRatio="none">
+        <!-- grid lines -->
+        <line x1="0" y1="5" x2="600" y2="5" stroke="#e8e6e1" stroke-width="0.5"/>
+        <line x1="0" y1="40" x2="600" y2="40" stroke="#e8e6e1" stroke-width="0.5"/>
+        <line x1="0" y1="75" x2="600" y2="75" stroke="#e8e6e1" stroke-width="0.5"/>
+        <!-- area fill -->
+        <polygon
+            fill="rgba(31,111,66,0.08)"
+            points="0,75 {% for s in reversed_snaps %}{{ (loop.index0 * 600 / (reversed_snaps|length - 1))|round(1) }},{{ (70 - (s.handicap_index - ns.min_val) / range_val * 60)|round(1) }}{% if not loop.last %} {% endif %}{% endfor %} 600,75"
+        />
+        <!-- line -->
+        <polyline
+            fill="none"
+            stroke="#1f6f42"
+            stroke-width="2.5"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            points="{% for s in reversed_snaps %}{{ (loop.index0 * 600 / (reversed_snaps|length - 1))|round(1) }},{{ (70 - (s.handicap_index - ns.min_val) / range_val * 60)|round(1) }}{% if not loop.last %} {% endif %}{% endfor %}"
+        />
+        {% for s in reversed_snaps %}
+            <circle
+                cx="{{ (loop.index0 * 600 / (reversed_snaps|length - 1))|round(1) }}"
+                cy="{{ (70 - (s.handicap_index - ns.min_val) / range_val * 60)|round(1) }}"
+                r="4"
+                fill="white"
+                stroke="#1f6f42"
+                stroke-width="2"
+            >
+                <title>{{ s.calculated_on }}: {{ s.handicap_index }}</title>
+            </circle>
+        {% endfor %}
+    </svg>
+    <div class="sparkline-labels">
+        {% for s in reversed_snaps %}
+            <span class="sparkline-date">{{ s.calculated_on[5:] }}</span>
+        {% endfor %}
+    </div>
+    <div class="sparkline-range">
+        <span>{{ ns.max_val }}</span>
+        <span>{{ ns.min_val }}</span>
+    </div>
+</div>
+{% endif %}
 
 <div id="pw-section" class="card pw-card" style="display:none;">
     <h3>{{ 'Change Password' if golfer.password_hash else 'Set Password' }}</h3>
@@ -81,6 +148,28 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>Holes</label>
+                <div class="toggle-group">
+                    <label class="toggle-option">
+                        <input type="radio" name="holes_played" value="18" checked onchange="toggleNineSelect()"> 18
+                    </label>
+                    <label class="toggle-option">
+                        <input type="radio" name="holes_played" value="9" onchange="toggleNineSelect()"> 9
+                    </label>
+                </div>
+            </div>
+            <div class="form-group" id="nine-select-group" style="display:none;">
+                <label>Which Nine?</label>
+                <div class="toggle-group">
+                    <label class="toggle-option">
+                        <input type="radio" name="nine" value="front" checked> Front 9
+                    </label>
+                    <label class="toggle-option">
+                        <input type="radio" name="nine" value="back"> Back 9
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
                 <label>Date</label>
                 <input type="date" name="played_on" value="{{ today }}" required>
             </div>
@@ -92,6 +181,7 @@
                 <label>Weather Notes <span class="text-muted">(optional)</span></label>
                 <input type="text" name="weather_notes" placeholder="e.g. Windy, Rainy">
             </div>
+            <p class="form-note">For 9-hole rounds, an expected differential for the unplayed nine (handicap &divide; 2) is added automatically.</p>
             <button type="submit" class="btn btn-primary">Save Round</button>
         </form>
     </section>
@@ -125,14 +215,23 @@
                             <div class="round-info">
                                 <strong>{{ round.course_name }}</strong>
                                 <span class="tee-badge">{{ round.tee_name }}</span>
+                                {% if round.holes_played == 9 %}
+                                    <span class="nine-badge">{{ round.nine|capitalize }} 9</span>
+                                {% endif %}
                                 {% if round.id in used_round_ids %}
                                     <span class="used-badge">USED</span>
                                 {% endif %}
                                 <div class="round-details">
                                     <span>{{ round.played_on }}</span>
-                                    <span>Score: {{ round.adjusted_gross_score }}</span>
-                                    {% if round.score_differential %}
+                                    <span>Actual: {{ round.actual_gross_score if round.actual_gross_score else round.adjusted_gross_score }}</span>
+                                    {% if round.actual_gross_score and round.actual_gross_score != round.adjusted_gross_score %}
+                                        <span class="esc-label">Adj: {{ round.adjusted_gross_score }}</span>
+                                    {% endif %}
+                                    {% if round.score_differential is not none %}
                                         <span>Diff: {{ "%.1f"|format(round.score_differential) }}</span>
+                                    {% endif %}
+                                    {% if round.exceptional_reduction and round.exceptional_reduction != 0 %}
+                                        <span class="reduction-badge">{{ round.exceptional_reduction }}</span>
                                     {% endif %}
                                     {% if round.weather_notes %}
                                         <span class="weather">{{ round.weather_notes }}</span>
@@ -148,15 +247,47 @@
                         </div>
 
                         <div id="holes-{{ round.id }}" class="holes-section" style="display:none;">
-                            <h4>Hole Scores — Par {{ round.par }}</h4>
-                            <div class="score-display">Running total: <strong id="total-{{ round.id }}">0</strong></div>
+                            {% if round.holes_played == 9 %}
+                                <h4>Hole Scores — {{ round.nine|capitalize }} 9</h4>
+                            {% else %}
+                                <h4>Hole Scores — Par {{ round.par }}</h4>
+                            {% endif %}
+                            <div class="score-display">
+                                Actual: <strong id="total-{{ round.id }}">0</strong>
+                                {% if round.actual_gross_score and round.actual_gross_score != round.adjusted_gross_score %}
+                                    &nbsp;/ Adj: <strong>{{ round.adjusted_gross_score }}</strong>
+                                {% endif %}
+                            </div>
                             {% if handicap is not none %}
                                 <p class="esc-info">ESC limits applied (handicap {{ handicap }})</p>
                             {% else %}
                                 <p class="esc-info">ESC limits start after 3 rounds</p>
                             {% endif %}
                             <form method="POST" action="{{ url_for('save_hole_scores', golfer_id=golfer.id, round_id=round.id) }}">
-                                <div class="holes-grid">
+                                {% if round.holes_played == 9 %}
+                                    {% set hole_start = 1 if round.nine == 'front' else 10 %}
+                                    {% set hole_end = 10 if round.nine == 'front' else 19 %}
+                                    <div class="holes-grid holes-grid-9">
+                                    {% for hole in range(hole_start, hole_end) %}
+                                        <div class="hole-input">
+                                            <label>{{ hole }}</label>
+                                            <div class="hole-par">Par {{ round.par // 18 }}</div>
+                                            <input
+                                                type="number"
+                                                name="hole_{{ hole }}_strokes"
+                                                min="1" max="15"
+                                                class="hole-input-field"
+                                                data-round="{{ round.id }}"
+                                                value="{{ round.hole_scores.get(hole, '') }}"
+                                                onchange="updateTotal({{ round.id }})">
+                                            {% if round.adjusted_scores.get(hole) and round.adjusted_scores.get(hole) != round.hole_scores.get(hole) %}
+                                                <div class="esc-adjusted">ESC: {{ round.adjusted_scores[hole] }}</div>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <div class="holes-grid">
                                     {% for hole in range(1, 19) %}
                                         <div class="hole-input">
                                             <label>{{ hole }}</label>
@@ -169,9 +300,13 @@
                                                 data-round="{{ round.id }}"
                                                 value="{{ round.hole_scores.get(hole, '') }}"
                                                 onchange="updateTotal({{ round.id }})">
+                                            {% if round.adjusted_scores.get(hole) and round.adjusted_scores.get(hole) != round.hole_scores.get(hole) %}
+                                                <div class="esc-adjusted">ESC: {{ round.adjusted_scores[hole] }}</div>
+                                            {% endif %}
                                         </div>
                                     {% endfor %}
-                                </div>
+                                    </div>
+                                {% endif %}
                                 <div class="form-actions">
                                     <button type="submit" class="btn btn-primary">Save Scores</button>
                                     <button type="button" class="btn btn-secondary" onclick="toggleHoles({{ round.id }})">Cancel</button>
@@ -189,6 +324,11 @@
 </div>
 
 <script>
+function toggleNineSelect() {
+    const holes = document.querySelector('input[name="holes_played"]:checked').value;
+    document.getElementById('nine-select-group').style.display = holes === '9' ? 'block' : 'none';
+}
+
 function loadTees() {
     const courseId = document.getElementById('course-select').value;
     const teeSelect = document.getElementById('tee-select');
@@ -218,7 +358,7 @@ function updateTotal(roundId) {
     let total = 0;
     inputs.forEach(input => { total += parseInt(input.value) || 0; });
     const el = document.getElementById(`total-${roundId}`);
-    if (el) el.textContent = total;
+    if (el) el.textContent = total || 0;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
