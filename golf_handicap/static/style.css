@@ -91,7 +91,7 @@ a { color: var(--primary); }
     margin-bottom: 2rem;
 }
 
-.grid-2 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.grid-2 { grid-template-columns: 2fr 3fr; }
 
 /* ── Cards ────────────────────────────────────────────────────────────────── */
 .card {
