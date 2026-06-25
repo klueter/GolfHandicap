@@ -244,6 +244,28 @@ def calculate_handicap(golfer_id):
 
     return round((avg + adjustment) * 0.96, 1), n, used_ids
 
+# ── Admin helpers ───────────────────────────────────────────────────────────
+
+def get_admin_password():
+    return os.environ.get('ADMIN_PASSWORD', '').strip()
+
+def admin_enabled():
+    return bool(get_admin_password())
+
+def require_admin():
+    """Returns redirect if admin protection is active and user is not authenticated."""
+    if admin_enabled() and not session.get('admin'):
+        return redirect(url_for('admin_login', next=request.path))
+    return None
+
+@app.context_processor
+def inject_admin():
+    # is_admin=True when no password is configured (open) or when authenticated
+    return dict(
+        is_admin=not admin_enabled() or bool(session.get('admin')),
+        admin_enabled=admin_enabled()
+    )
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -256,6 +278,26 @@ def index():
 @app.route('/rules')
 def rules():
     return render_template('rules.html')
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if not admin_enabled():
+        return redirect(url_for('courses'))
+    if session.get('admin'):
+        return redirect(url_for('courses'))
+    if request.method == 'POST':
+        if request.form.get('password') == get_admin_password():
+            session['admin'] = True
+            next_url = request.form.get('next') or url_for('courses')
+            return redirect(next_url)
+        flash('Incorrect admin password.', 'danger')
+    return render_template('admin_login.html', next=request.args.get('next', ''))
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('admin', None)
+    flash('Admin logged out.', 'info')
+    return redirect(url_for('courses'))
 
 @app.route('/golfer/add', methods=['POST'])
 def add_golfer():
@@ -662,6 +704,9 @@ def courses():
 
 @app.route('/course/add', methods=['POST'])
 def add_course():
+    blocked = require_admin()
+    if blocked:
+        return blocked
     name = request.form['name'].strip()
     city = request.form.get('city', '').strip() or None
     country = request.form.get('country', '').strip() or None
@@ -675,6 +720,9 @@ def add_course():
 
 @app.route('/course/add-tee', methods=['POST'])
 def add_tee():
+    blocked = require_admin()
+    if blocked:
+        return blocked
     course_id = request.form.get('course_id', '').strip()
     if not course_id:
         flash('Please select a course.', 'danger')
@@ -703,6 +751,9 @@ def add_tee():
 
 @app.route('/tee/<int:tee_id>/copy', methods=['POST'])
 def copy_tee(tee_id):
+    blocked = require_admin()
+    if blocked:
+        return blocked
     conn = get_db()
     original = conn.execute('SELECT * FROM tee_set WHERE id = ?', (tee_id,)).fetchone()
     
@@ -738,6 +789,9 @@ def copy_tee(tee_id):
 
 @app.route('/course/<int:course_id>/delete', methods=['POST'])
 def delete_course(course_id):
+    blocked = require_admin()
+    if blocked:
+        return blocked
     conn = get_db()
     try:
         tee_ids = [t['id'] for t in conn.execute(
@@ -764,6 +818,9 @@ def delete_course(course_id):
 
 @app.route('/tee/<int:tee_id>/delete', methods=['POST'])
 def delete_tee(tee_id):
+    blocked = require_admin()
+    if blocked:
+        return blocked
     conn = get_db()
     try:
         result = conn.execute('SELECT course_id FROM tee_set WHERE id = ?', (tee_id,)).fetchone()
@@ -812,6 +869,9 @@ def edit_holes(tee_id):
 
 @app.route('/tee/<int:tee_id>/holes/save', methods=['POST'])
 def save_holes(tee_id):
+    blocked = require_admin()
+    if blocked:
+        return blocked
     conn = get_db()
     conn.execute('DELETE FROM hole WHERE tee_set_id = ?', (tee_id,))
     

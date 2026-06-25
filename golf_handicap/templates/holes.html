@@ -80,8 +80,10 @@
             {% endfor %}
         </div>
         <div class="form-actions">
+            {% if is_admin %}
             <button type="submit" class="btn btn-primary">Save Tee Set</button>
-            <a href="{{ url_for('courses') }}" class="btn btn-secondary">Cancel</a>
+            {% endif %}
+            <a href="{{ url_for('courses') }}" class="btn btn-secondary">{{ 'Cancel' if is_admin else 'Back to Courses' }}</a>
         </div>
     </section>
 </form>

@@ -15,6 +15,13 @@
                 <li><a href="{{ url_for('index') }}">Home</a></li>
                 <li><a href="{{ url_for('courses') }}">Courses</a></li>
                 <li><a href="{{ url_for('rules') }}">WHS Rules</a></li>
+                {% if admin_enabled %}
+                    {% if is_admin %}
+                        <li><a href="{{ url_for('admin_logout') }}" class="nav-admin-active">Admin ✓</a></li>
+                    {% else %}
+                        <li><a href="{{ url_for('admin_login') }}" class="nav-admin">Admin</a></li>
+                    {% endif %}
+                {% endif %}
             </ul>
         </div>
     </nav>

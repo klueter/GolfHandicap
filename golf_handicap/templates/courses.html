@@ -4,6 +4,7 @@
 <h1>Manage Courses</h1>
 
 <div class="grid grid-2">
+    {% if is_admin %}
     <section class="card">
         <h2>Add a New Course</h2>
         <form method="POST" action="{{ url_for('add_course') }}">
@@ -22,6 +23,7 @@
             <button type="submit" class="btn btn-primary">Add Course</button>
         </form>
     </section>
+    {% endif %}
 
     <section class="card">
         <h2>Courses ({{ courses|length }})</h2>
@@ -45,7 +47,7 @@
     </section>
 </div>
 
-{% if courses %}
+{% if courses and is_admin %}
     <section class="card">
         <h2>Add Tee Set</h2>
         <form method="POST" action="{{ url_for('add_tee') }}">
@@ -102,9 +104,11 @@
                                 <p class="text-muted">{{ course.city }}{% if course.country %}, {{ course.country }}{% endif %}</p>
                             {% endif %}
                         </div>
+                        {% if is_admin %}
                         <form method="POST" action="{{ url_for('delete_course', course_id=course.id) }}">
                             <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this course and all its tee sets?')">Delete</button>
                         </form>
+                        {% endif %}
                     </div>
 
                     {% if course.tees %}
@@ -123,6 +127,7 @@
                                     </div>
                                     <div class="tee-actions">
                                         <a href="{{ url_for('scorecard', tee_id=tee.id) }}" class="btn btn-sm btn-secondary">Scorecard</a>
+                                        {% if is_admin %}
                                         <a href="{{ url_for('edit_holes', tee_id=tee.id) }}" class="btn btn-sm btn-primary">Hole Details</a>
                                         <form method="POST" action="{{ url_for('copy_tee', tee_id=tee.id) }}">
                                             <button type="submit" class="btn btn-sm btn-secondary">Copy</button>
@@ -130,6 +135,7 @@
                                         <form method="POST" action="{{ url_for('delete_tee', tee_id=tee.id) }}">
                                             <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this tee set?')">Delete</button>
                                         </form>
+                                        {% endif %}
                                     </div>
                                 </div>
                             {% endfor %}

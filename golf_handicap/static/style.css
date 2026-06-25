@@ -80,6 +80,9 @@ a { color: var(--primary); }
 
 .navbar .nav-links a:hover { opacity: 0.7; }
 
+.nav-admin { opacity: 0.6; }
+.nav-admin-active { opacity: 1; font-weight: 700; }
+
 /* ── Layout ───────────────────────────────────────────────────────────────── */
 .container {
     max-width: 1100px;
