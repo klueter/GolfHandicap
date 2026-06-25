@@ -407,12 +407,20 @@ a { color: var(--primary); }
 
 .round-info strong { font-size: 0.95rem; }
 
+.round-score-line {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 0.15rem;
+}
+
 .round-details {
     display: flex;
     gap: 0.75rem;
     font-size: 0.82rem;
     margin-top: 0.3rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    white-space: nowrap;
     color: var(--text-light);
 }
 

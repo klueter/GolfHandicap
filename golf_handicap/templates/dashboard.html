@@ -175,9 +175,6 @@
                             <div class="round-info">
                                 <strong>{{ round.course_name }}</strong>
                                 <span class="tee-badge">{{ round.tee_name }}</span>
-                                {% if round.id in used_round_ids %}
-                                    <span class="used-badge">USED</span>
-                                {% endif %}
                                 <div class="round-details">
                                     <span>{{ round.played_on }}</span>
                                     <span>Score: {{ round.adjusted_gross_score }}</span>
@@ -186,6 +183,9 @@
                                     {% endif %}
                                     {% if round.weather_notes %}
                                         <span class="weather">{{ round.weather_notes }}</span>
+                                    {% endif %}
+                                    {% if round.id in used_round_ids %}
+                                        <span class="used-badge">USED</span>
                                     {% endif %}
                                 </div>
                             </div>
