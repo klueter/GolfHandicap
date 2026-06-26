@@ -1,6 +1,9 @@
 import sqlite3
 import os
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
+import csv
+import io
+import json
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, Response
 from datetime import date
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -690,17 +693,56 @@ def courses():
         FROM course c LEFT JOIN tee_set t ON c.id = t.course_id
         GROUP BY c.id ORDER BY c.name
     ''').fetchall()
-    
-    # Get tee sets for each course
-    courses_data = []
-    for course in courses_list:
-        tees = conn.execute('SELECT * FROM tee_set WHERE course_id = ? ORDER BY course_rating DESC', (course['id'],)).fetchall()
-        course_dict = dict(course)
-        course_dict['tees'] = [dict(t) for t in tees]
-        courses_data.append(course_dict)
-    
+    courses_data = [dict(c) for c in courses_list]
+
+    selected = None
+    course_id = request.args.get('course_id', type=int)
+    if course_id:
+        for c in courses_data:
+            if c['id'] == course_id:
+                tees = conn.execute('SELECT * FROM tee_set WHERE course_id = ? ORDER BY course_rating DESC', (course_id,)).fetchall()
+                tees = [dict(t) for t in tees]
+                for t in tees:
+                    holes = conn.execute(
+                        'SELECT hole_number, par, handicap FROM hole WHERE tee_set_id = ? ORDER BY hole_number',
+                        (t['id'],)
+                    ).fetchall()
+                    t['holes'] = [dict(h) for h in holes]
+                c['tees'] = tees
+                selected = c
+                break
+
     conn.close()
-    return render_template('courses.html', courses=courses_data)
+    show_add = request.args.get('add') == '1'
+    course_json = json.dumps([
+        {'id': c['id'], 'text': c['name'] + (' · ' + c['city'] + (', ' + c['country'] if c.get('country') else '') if c.get('city') else '')}
+        for c in courses_data
+    ])
+    return render_template('courses.html', courses=courses_data, selected=selected, show_add=show_add, course_json=course_json)
+
+@app.route('/course/<int:course_id>/detail')
+def course_detail(course_id):
+    conn = get_db()
+    course = conn.execute('SELECT * FROM course WHERE id = ?', (course_id,)).fetchone()
+    if not course:
+        conn.close()
+        flash('Course not found.', 'danger')
+        return redirect(url_for('courses'))
+    course = dict(course)
+
+    tees = conn.execute('SELECT * FROM tee_set WHERE course_id = ? ORDER BY course_rating DESC', (course_id,)).fetchall()
+    tees = [dict(t) for t in tees]
+
+    for tee in tees:
+        holes = conn.execute(
+            'SELECT hole_number, par, handicap FROM hole WHERE tee_set_id = ? ORDER BY hole_number',
+            (tee['id'],)
+        ).fetchall()
+        tee['holes'] = [dict(h) for h in holes]
+
+    conn.close()
+    return render_template('course_detail.html', course=course, tees=tees)
+
 
 @app.route('/course/add', methods=['POST'])
 def add_course():
@@ -1063,6 +1105,174 @@ def player_report(golfer_id):
         by_diff=by_diff,
         today=date.today().isoformat(),
     )
+
+@app.route('/courses/export')
+def export_courses():
+    blocked = require_admin()
+    if blocked:
+        return blocked
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT c.name as course_name, c.city, c.country,
+               t.id as tee_id, t.tee_name, t.gender, t.course_rating, t.slope_rating, t.par,
+               t.front_rating, t.front_slope, t.back_rating, t.back_slope
+        FROM course c
+        JOIN tee_set t ON t.course_id = c.id
+        ORDER BY c.name, t.tee_name
+    ''').fetchall()
+
+    tee_ids = [r['tee_id'] for r in rows]
+    hole_data = {}
+    if tee_ids:
+        placeholders = ','.join('?' * len(tee_ids))
+        holes = conn.execute(
+            f'SELECT tee_set_id, hole_number, par, handicap FROM hole WHERE tee_set_id IN ({placeholders}) ORDER BY hole_number',
+            tee_ids
+        ).fetchall()
+        for h in holes:
+            hole_data.setdefault(h['tee_set_id'], {})[h['hole_number']] = h
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['course_name', 'city', 'country', 'tee_name', 'gender',
+                     'course_rating', 'slope_rating', 'par',
+                     'front_rating', 'front_slope', 'back_rating', 'back_slope',
+                     'hole_pars', 'hole_handicaps'])
+    for r in rows:
+        hd = hole_data.get(r['tee_id'], {})
+        if hd:
+            hole_pars = ','.join(str(hd[n]['par']) if n in hd else '' for n in range(1, 19))
+            hole_hcps = ','.join(str(hd[n]['handicap']) if n in hd else '' for n in range(1, 19))
+        else:
+            hole_pars = ''
+            hole_hcps = ''
+        writer.writerow([r['course_name'], r['city'] or '', r['country'] or '',
+                         r['tee_name'], r['gender'],
+                         r['course_rating'], r['slope_rating'], r['par'],
+                         r['front_rating'] or '', r['front_slope'] or '',
+                         r['back_rating'] or '', r['back_slope'] or '',
+                         hole_pars, hole_hcps])
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=courses_export.csv'}
+    )
+
+
+@app.route('/courses/import', methods=['POST'])
+def import_courses():
+    blocked = require_admin()
+    if blocked:
+        return blocked
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        flash('No file selected.', 'danger')
+        return redirect(url_for('courses'))
+
+    try:
+        text = file.stream.read().decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(text))
+    except Exception:
+        flash('Could not read CSV file.', 'danger')
+        return redirect(url_for('courses'))
+
+    required = {'course_name', 'tee_name', 'course_rating', 'slope_rating', 'par'}
+    if not required.issubset(set(reader.fieldnames or [])):
+        flash(f'CSV must have columns: {", ".join(sorted(required))}', 'danger')
+        return redirect(url_for('courses'))
+
+    conn = get_db()
+    added_courses = 0
+    added_tees = 0
+    skipped_tees = 0
+
+    for row in reader:
+        course_name = (row.get('course_name') or '').strip()
+        tee_name = (row.get('tee_name') or '').strip()
+        if not course_name or not tee_name:
+            continue
+
+        city = (row.get('city') or '').strip() or None
+        country = (row.get('country') or '').strip() or None
+
+        course = conn.execute(
+            'SELECT id FROM course WHERE TRIM(LOWER(name)) = TRIM(LOWER(?))', (course_name,)
+        ).fetchone()
+
+        if course:
+            course_id = course['id']
+        else:
+            cursor = conn.execute(
+                'INSERT INTO course (name, city, country) VALUES (?, ?, ?)',
+                (course_name, city, country)
+            )
+            course_id = cursor.lastrowid
+            added_courses += 1
+
+        existing = conn.execute(
+            'SELECT id FROM tee_set WHERE course_id = ? AND TRIM(LOWER(tee_name)) = TRIM(LOWER(?))',
+            (course_id, tee_name)
+        ).fetchone()
+        if existing:
+            skipped_tees += 1
+            continue
+
+        gender = (row.get('gender') or 'Any').strip()
+        if gender not in ('M', 'F', 'Any'):
+            gender = 'Any'
+
+        try:
+            cr = float(row['course_rating'])
+            sr = int(float(row['slope_rating']))
+            par = int(float(row['par']))
+        except (ValueError, KeyError):
+            continue
+
+        fr = float(row['front_rating']) if row.get('front_rating', '').strip() else None
+        fs = int(float(row['front_slope'])) if row.get('front_slope', '').strip() else None
+        br = float(row['back_rating']) if row.get('back_rating', '').strip() else None
+        bs = int(float(row['back_slope'])) if row.get('back_slope', '').strip() else None
+
+        cursor = conn.execute('''
+            INSERT INTO tee_set (course_id, tee_name, gender, course_rating, slope_rating, par,
+                                 front_rating, front_slope, back_rating, back_slope)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (course_id, tee_name, gender, cr, sr, par, fr, fs, br, bs))
+        new_tee_id = cursor.lastrowid
+
+        hole_pars_str = (row.get('hole_pars') or '').strip()
+        hole_hcps_str = (row.get('hole_handicaps') or '').strip()
+        if hole_pars_str and hole_hcps_str:
+            try:
+                pars = [int(x) for x in hole_pars_str.split(',') if x.strip()]
+                hcps = [int(x) for x in hole_hcps_str.split(',') if x.strip()]
+                for i, (p, h) in enumerate(zip(pars, hcps), start=1):
+                    conn.execute(
+                        'INSERT INTO hole (tee_set_id, hole_number, par, handicap) VALUES (?, ?, ?, ?)',
+                        (new_tee_id, i, p, h)
+                    )
+            except (ValueError, IndexError):
+                pass
+
+        added_tees += 1
+
+    conn.commit()
+    conn.close()
+
+    parts = []
+    if added_courses:
+        parts.append(f'{added_courses} course{"s" if added_courses != 1 else ""}')
+    if added_tees:
+        parts.append(f'{added_tees} tee set{"s" if added_tees != 1 else ""}')
+    if skipped_tees:
+        parts.append(f'{skipped_tees} duplicate{"s" if skipped_tees != 1 else ""} skipped')
+
+    flash(f'Import complete: {", ".join(parts) or "nothing new to import"}.', 'success')
+    return redirect(url_for('courses'))
+
 
 _db_ready = False
 

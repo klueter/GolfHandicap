@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="no-print" style="margin-bottom:1rem; display:flex; align-items:center; gap:1rem;">
+    <a href="{{ url_for('courses') }}?course_id={{ course.id }}" class="page-back">← Courses</a>
+    <button onclick="window.print()" class="btn btn-primary" style="margin-left:auto;">🖨 Print</button>
+</div>
+
+<div class="scorecard-wrap">
+    <div class="scorecard-header">
+        <div>
+            <h1 class="scorecard-course">{{ course.name }}</h1>
+            {% if course.city %}
+                <p class="scorecard-location">{{ course.city }}{% if course.country %}, {{ course.country }}{% endif %}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% for tee in tees %}
+    <div style="margin-top:1.5rem;">
+        <h3 style="margin:0 0 0.25rem;">
+            {{ tee.tee_name }}
+            <span class="badge">{% if tee.gender == 'M' %}Men's{% elif tee.gender == 'F' %}Women's{% else %}Any{% endif %}</span>
+        </h3>
+        <div class="tee-details" style="margin-bottom:0.75rem;">
+            <span>Rating: {{ tee.course_rating }}</span>
+            <span>Slope: {{ tee.slope_rating }}</span>
+            <span>Par: {{ tee.par }}</span>
+            {% if tee.front_rating %}<span>Front: {{ tee.front_rating }}/{{ tee.front_slope }}</span>{% endif %}
+            {% if tee.back_rating %}<span>Back: {{ tee.back_rating }}/{{ tee.back_slope }}</span>{% endif %}
+        </div>
+
+        {% if tee.holes %}
+        <!-- Front 9 -->
+        <table class="scorecard-table">
+            <thead>
+                <tr>
+                    <th>Hole</th>
+                    {% for n in range(1, 10) %}<th>{{ n }}</th>{% endfor %}
+                    <th>Out</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="row-par">
+                    <td>Par</td>
+                    {% set front_par = namespace(v=0) %}
+                    {% for n in range(1, 10) %}
+                        {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                        {% if h %}
+                            <td>{{ h.par }}</td>
+                            {% set front_par.v = front_par.v + h.par %}
+                        {% else %}
+                            <td>—</td>
+                        {% endif %}
+                    {% endfor %}
+                    <td>{{ front_par.v or '—' }}</td>
+                </tr>
+                <tr class="row-hcp">
+                    <td>HCP</td>
+                    {% for n in range(1, 10) %}
+                        {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                        <td>{% if h %}{{ h.handicap }}{% else %}—{% endif %}</td>
+                    {% endfor %}
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Back 9 -->
+        <table class="scorecard-table" style="margin-top:0.5rem;">
+            <thead>
+                <tr>
+                    <th>Hole</th>
+                    {% for n in range(10, 19) %}<th>{{ n }}</th>{% endfor %}
+                    <th>In</th>
+                    <th>Tot</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="row-par">
+                    <td>Par</td>
+                    {% set back_par = namespace(v=0) %}
+                    {% for n in range(10, 19) %}
+                        {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                        {% if h %}
+                            <td>{{ h.par }}</td>
+                            {% set back_par.v = back_par.v + h.par %}
+                        {% else %}
+                            <td>—</td>
+                        {% endif %}
+                    {% endfor %}
+                    <td>{{ back_par.v or '—' }}</td>
+                    <td>{{ tee.par }}</td>
+                </tr>
+                <tr class="row-hcp">
+                    <td>HCP</td>
+                    {% for n in range(10, 19) %}
+                        {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                        <td>{% if h %}{{ h.handicap }}{% else %}—{% endif %}</td>
+                    {% endfor %}
+                    <td></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+        {% else %}
+            <p class="text-muted">No hole details entered.</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,17 +1,91 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>Manage Courses</h1>
-
-<div class="grid grid-2">
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+    <h1 style="margin:0;">Courses</h1>
     {% if is_admin %}
-    <section class="card">
-        <h2>Add a New Course</h2>
-        <form method="POST" action="{{ url_for('add_course') }}">
-            <div class="form-group">
-                <label>Course Name</label>
-                <input type="text" name="name" placeholder="e.g. Pebble Beach" required>
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        <a href="{{ url_for('export_courses') }}" class="btn btn-sm btn-secondary">Export CSV</a>
+        <form method="POST" action="{{ url_for('import_courses') }}" enctype="multipart/form-data" style="display:flex; gap:0.5rem; align-items:center; margin:0;">
+            <input type="file" name="file" accept=".csv" required style="font-size:0.85rem;">
+            <button type="submit" class="btn btn-sm btn-primary">Import CSV</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<section class="card">
+    <div style="display:flex; gap:1rem; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="flex:1; min-width:200px; margin-bottom:0; position:relative;">
+            <label>Select Course ({{ courses|length }})</label>
+            <div style="position:relative;">
+                <input type="text" id="course-search" autocomplete="off"
+                       placeholder="Type to filter…"
+                       value="{% if selected %}{{ selected.name }}{% if selected.city %} · {{ selected.city }}{% if selected.country %}, {{ selected.country }}{% endif %}{% endif %}{% endif %}"
+                       style="width:100%; padding-right:2rem;">
+                <span id="course-clear" onclick="document.getElementById('course-search').value=''; document.getElementById('course-search').focus(); document.getElementById('course-search').dispatchEvent(new Event('input'));"
+                      style="position:absolute; right:0.5rem; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted, #888); display:{% if selected %}inline{% else %}none{% endif %};">&times;</span>
             </div>
+            <div id="course-dropdown" style="display:none; position:absolute; z-index:100; left:0; right:0; max-height:250px; overflow-y:auto; background:var(--bg, #fff); border:1px solid var(--border, #ccc); border-top:none; border-radius:0 0 4px 4px; box-shadow:0 4px 8px rgba(0,0,0,0.1);">
+            </div>
+            <script>
+            (function() {
+                var courses = {{ course_json|safe }};
+                var input = document.getElementById('course-search');
+                var dropdown = document.getElementById('course-dropdown');
+                var selectedId = {{ selected.id if selected else 'null' }};
+
+                function render(filter) {
+                    var f = (filter || '').toLowerCase();
+                    var html = '';
+                    courses.forEach(function(c) {
+                        if (!f || c.text.toLowerCase().indexOf(f) >= 0) {
+                            html += '<div class="course-option" data-id="'+c.id+'" style="padding:0.5rem 0.75rem; cursor:pointer;"'
+                                + ' onmousedown="window.location=\'?course_id='+c.id+'\';"'
+                                + ' onmouseover="this.style.background=\'var(--accent-light, #e8f0fe)\';"'
+                                + ' onmouseout="this.style.background=\'\';"'
+                                + '>'+c.text+'</div>';
+                        }
+                    });
+                    dropdown.innerHTML = html || '<div style="padding:0.5rem 0.75rem; color:var(--text-muted, #888);">No matches</div>';
+                }
+
+                input.addEventListener('focus', function() {
+                    if (selectedId) { input.select(); }
+                    render(input.value === courses.find(function(c){return c.id===selectedId;})?.text ? '' : input.value);
+                    dropdown.style.display = 'block';
+                });
+                input.addEventListener('input', function() {
+                    render(input.value);
+                    dropdown.style.display = 'block';
+                    document.getElementById('course-clear').style.display = input.value ? 'inline' : 'none';
+                });
+                input.addEventListener('blur', function() {
+                    setTimeout(function(){ dropdown.style.display = 'none'; }, 150);
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') { dropdown.style.display = 'none'; input.blur(); }
+                });
+            })();
+            </script>
+        </div>
+        {% if is_admin %}
+        <div style="display:flex; gap:0.5rem; padding-bottom:0.1rem;">
+            <a href="{{ url_for('courses') }}?add=1{% if selected %}&course_id={{ selected.id }}{% endif %}" class="btn btn-sm btn-primary">+ Course</a>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{% if show_add and is_admin %}
+<section class="card">
+    <h2>Add a New Course</h2>
+    <form method="POST" action="{{ url_for('add_course') }}">
+        <div class="form-group">
+            <label>Course Name</label>
+            <input type="text" name="name" placeholder="e.g. Pebble Beach" required>
+        </div>
+        <div class="grid grid-2">
             <div class="form-group">
                 <label>City <span class="text-muted">(optional)</span></label>
                 <input type="text" name="city" placeholder="e.g. Carmel">
@@ -20,135 +94,148 @@
                 <label>Country <span class="text-muted">(optional)</span></label>
                 <input type="text" name="country" placeholder="e.g. USA">
             </div>
-            <button type="submit" class="btn btn-primary">Add Course</button>
-        </form>
-    </section>
-    {% endif %}
-
-    <section class="card">
-        <h2>Courses ({{ courses|length }})</h2>
-        {% if courses %}
-            <div class="courses-list">
-                {% for course in courses %}
-                    <div class="course-item">
-                        <div>
-                            <strong>{{ course.name }}</strong>
-                            {% if course.city %}
-                                <span class="text-muted"> · {{ course.city }}{% if course.country %}, {{ course.country }}{% endif %}</span>
-                            {% endif %}
-                        </div>
-                        <span class="badge">{{ course.tee_count }} tee set{{ 's' if course.tee_count != 1 else '' }}</span>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <p class="text-muted">No courses added yet.</p>
-        {% endif %}
-    </section>
-</div>
-
-{% if courses and is_admin %}
-    <section class="card">
-        <h2>Add Tee Set</h2>
-        <form method="POST" action="{{ url_for('add_tee') }}">
-            <div class="form-group">
-                <label>Course</label>
-                <select name="course_id" required>
-                    <option value="">Select a course…</option>
-                    {% for course in courses %}
-                        <option value="{{ course.id }}">{{ course.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="grid grid-2">
-                <div class="form-group">
-                    <label>Tee Name</label>
-                    <input type="text" name="tee_name" placeholder="e.g. White, Blue, Red" required>
-                </div>
-                <div class="form-group">
-                    <label>Gender</label>
-                    <select name="gender" required>
-                        <option value="M">Men's</option>
-                        <option value="F">Women's</option>
-                        <option value="Any">Any</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Course Rating</label>
-                    <input type="number" name="course_rating" step="0.1" placeholder="e.g. 71.4" required>
-                </div>
-                <div class="form-group">
-                    <label>Slope Rating</label>
-                    <input type="number" name="slope_rating" min="55" max="155" placeholder="e.g. 135" required>
-                </div>
-                <div class="form-group">
-                    <label>Par</label>
-                    <input type="number" name="par" min="54" max="72" placeholder="e.g. 72" required>
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary">Add Tee Set</button>
-        </form>
-    </section>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Course</button>
+    </form>
+</section>
 {% endif %}
 
+{% if selected %}
 <section class="card">
-    <h2>Course Tee Sets</h2>
-    {% if courses %}
-        <div class="courses-detailed">
-            {% for course in courses %}
-                <div class="course-card">
-                    <div class="course-header">
-                        <div>
-                            <h3>{{ course.name }}</h3>
-                            {% if course.city %}
-                                <p class="text-muted">{{ course.city }}{% if course.country %}, {{ course.country }}{% endif %}</p>
-                            {% endif %}
+    <div class="course-header">
+        <div>
+            <h2 style="margin:0;">{{ selected.name }}</h2>
+            {% if selected.city %}
+                <p class="text-muted" style="margin:0.25rem 0 0;">{{ selected.city }}{% if selected.country %}, {{ selected.country }}{% endif %}</p>
+            {% endif %}
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            <a href="{{ url_for('course_detail', course_id=selected.id) }}" class="btn btn-sm btn-secondary">Print View</a>
+            {% if is_admin %}
+            <form method="POST" action="{{ url_for('delete_course', course_id=selected.id) }}">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this course and all its tee sets?')">Delete</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if selected.tees %}
+        <div class="tee-list" style="margin-top:1rem;">
+            {% for tee in selected.tees %}
+                <div class="tee-item">
+                    <div>
+                        <strong>{{ tee.tee_name }}</strong>
+                        <span class="badge">{% if tee.gender == 'M' %}Men's{% elif tee.gender == 'F' %}Women's{% else %}Any{% endif %}</span>
+                        <div class="tee-details">
+                            <span>Rating: {{ tee.course_rating }}</span>
+                            <span>Slope: {{ tee.slope_rating }}</span>
+                            <span>Par: {{ tee.par }}</span>
                         </div>
+                    </div>
+                    <div class="tee-actions">
+                        <a href="{{ url_for('scorecard', tee_id=tee.id) }}" class="btn btn-sm btn-secondary">Scorecard</a>
                         {% if is_admin %}
-                        <form method="POST" action="{{ url_for('delete_course', course_id=course.id) }}">
-                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this course and all its tee sets?')">Delete</button>
+                        <a href="{{ url_for('edit_holes', tee_id=tee.id) }}" class="btn btn-sm btn-primary">Hole Details</a>
+                        <form method="POST" action="{{ url_for('copy_tee', tee_id=tee.id) }}">
+                            <button type="submit" class="btn btn-sm btn-secondary">Copy</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('delete_tee', tee_id=tee.id) }}">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this tee set?')">Delete</button>
                         </form>
                         {% endif %}
                     </div>
-
-                    {% if course.tees %}
-                        <div class="tee-list">
-                            <h4>Tee Sets</h4>
-                            {% for tee in course.tees %}
-                                <div class="tee-item">
-                                    <div>
-                                        <strong>{{ tee.tee_name }}</strong>
-                                        <span class="badge">{% if tee.gender == 'M' %}Men's{% elif tee.gender == 'F' %}Women's{% else %}Any{% endif %}</span>
-                                        <div class="tee-details">
-                                            <span>Rating: {{ tee.course_rating }}</span>
-                                            <span>Slope: {{ tee.slope_rating }}</span>
-                                            <span>Par: {{ tee.par }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="tee-actions">
-                                        <a href="{{ url_for('scorecard', tee_id=tee.id) }}" class="btn btn-sm btn-secondary">Scorecard</a>
-                                        {% if is_admin %}
-                                        <a href="{{ url_for('edit_holes', tee_id=tee.id) }}" class="btn btn-sm btn-primary">Hole Details</a>
-                                        <form method="POST" action="{{ url_for('copy_tee', tee_id=tee.id) }}">
-                                            <button type="submit" class="btn btn-sm btn-secondary">Copy</button>
-                                        </form>
-                                        <form method="POST" action="{{ url_for('delete_tee', tee_id=tee.id) }}">
-                                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this tee set?')">Delete</button>
-                                        </form>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            {% endfor %}
-                        </div>
-                    {% else %}
-                        <p class="text-muted">No tee sets added yet.</p>
-                    {% endif %}
                 </div>
+                {% if tee.holes %}
+                <div style="margin:0.5rem 0 1rem; overflow-x:auto;">
+                    <table class="scorecard-table" style="font-size:0.8rem;">
+                        <thead>
+                            <tr>
+                                <th>Hole</th>
+                                {% for n in range(1, 10) %}<th>{{ n }}</th>{% endfor %}
+                                <th>Out</th>
+                                {% for n in range(10, 19) %}<th>{{ n }}</th>{% endfor %}
+                                <th>In</th>
+                                <th>Tot</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="row-par">
+                                <td>Par</td>
+                                {% set fp = namespace(v=0) %}
+                                {% set bp = namespace(v=0) %}
+                                {% for n in range(1, 10) %}
+                                    {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                                    <td>{% if h %}{{ h.par }}{% set fp.v = fp.v + h.par %}{% else %}—{% endif %}</td>
+                                {% endfor %}
+                                <td><strong>{{ fp.v or '—' }}</strong></td>
+                                {% for n in range(10, 19) %}
+                                    {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                                    <td>{% if h %}{{ h.par }}{% set bp.v = bp.v + h.par %}{% else %}—{% endif %}</td>
+                                {% endfor %}
+                                <td><strong>{{ bp.v or '—' }}</strong></td>
+                                <td><strong>{{ tee.par }}</strong></td>
+                            </tr>
+                            <tr class="row-hcp">
+                                <td>HCP</td>
+                                {% for n in range(1, 10) %}
+                                    {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                                    <td>{% if h %}{{ h.handicap }}{% else %}—{% endif %}</td>
+                                {% endfor %}
+                                <td></td>
+                                {% for n in range(10, 19) %}
+                                    {% set h = tee.holes|selectattr('hole_number','equalto',n)|first %}
+                                    <td>{% if h %}{{ h.handicap }}{% else %}—{% endif %}</td>
+                                {% endfor %}
+                                <td></td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
             {% endfor %}
         </div>
     {% else %}
-        <p class="text-muted">No courses added yet.</p>
+        <p class="text-muted" style="margin-top:1rem;">No tee sets added yet.</p>
+    {% endif %}
+
+    {% if is_admin %}
+    <hr style="margin:1.5rem 0;">
+    <h3>Add Tee Set</h3>
+    <form method="POST" action="{{ url_for('add_tee') }}">
+        <input type="hidden" name="course_id" value="{{ selected.id }}">
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label>Tee Name</label>
+                <input type="text" name="tee_name" placeholder="e.g. White, Blue, Red" required>
+            </div>
+            <div class="form-group">
+                <label>Gender</label>
+                <select name="gender" required>
+                    <option value="M">Men's</option>
+                    <option value="F">Women's</option>
+                    <option value="Any">Any</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Course Rating</label>
+                <input type="number" name="course_rating" step="0.1" placeholder="e.g. 71.4" required>
+            </div>
+            <div class="form-group">
+                <label>Slope Rating</label>
+                <input type="number" name="slope_rating" min="55" max="155" placeholder="e.g. 135" required>
+            </div>
+            <div class="form-group">
+                <label>Par</label>
+                <input type="number" name="par" min="54" max="72" placeholder="e.g. 72" required>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Tee Set</button>
+    </form>
     {% endif %}
 </section>
+{% elif not show_add %}
+    <p class="text-muted" style="margin-top:1rem;">Select a course above to view its tee sets.</p>
+{% endif %}
 
 {% endblock %}
