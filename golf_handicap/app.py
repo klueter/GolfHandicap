@@ -487,22 +487,63 @@ def dashboard(golfer_id):
         today=date.today().isoformat()
     )
 
+def calculate_handicap_as_of(rounds_up_to):
+    """Calculate handicap from a list of rounds (already filtered and ordered by date)."""
+    valid = [(r['id'], r['score_differential'], r['exceptional_reduction'] or 0)
+             for r in rounds_up_to if r['score_differential'] is not None]
+    n = len(valid)
+    if n < 3:
+        return 54.0, n
+
+    # Only use most recent 20
+    valid = valid[-20:]
+    n = len(valid)
+
+    use = {3:1, 4:1, 5:1, 6:2, 7:2, 8:2, 9:3, 10:3, 11:3, 12:4, 13:4, 14:4,
+           15:5, 16:5, 17:6, 18:6, 19:7}.get(n, 8)
+
+    adjusted = [(rid, diff + red, red) for rid, diff, red in valid]
+    sorted_valid = sorted(adjusted, key=lambda x: x[1])
+    avg = sum(row[1] for row in sorted_valid[:use]) / use
+    adjustment = {3: -2.0, 4: -1.0, 6: -1.0}.get(n, 0)
+    return round((avg + adjustment) * 0.96, 1), n
+
+
 @app.route('/golfer/<int:golfer_id>/recalculate', methods=['POST'])
 def recalculate_handicap(golfer_id):
     blocked = require_golfer_access(golfer_id)
     if blocked:
         return blocked
-    handicap, rounds_used, _ = calculate_handicap(golfer_id)
     conn = get_db()
-    if handicap is not None:
-        conn.execute('''
-            INSERT INTO handicap_snapshot (golfer_id, calculated_on, handicap_index, rounds_used)
-            VALUES (?, date('now'), ?, ?)
-        ''', (golfer_id, handicap, rounds_used))
-        conn.commit()
-        flash(f'Handicap recalculated: {handicap} (from {rounds_used} rounds).', 'success')
-    else:
-        flash(f'Need at least 3 rounds to calculate a handicap (you have {rounds_used}).', 'info')
+
+    all_rounds = conn.execute('''
+        SELECT id, played_on, score_differential, exceptional_reduction
+        FROM round WHERE golfer_id = ?
+        ORDER BY played_on ASC, id ASC
+    ''', (golfer_id,)).fetchall()
+    all_rounds = [dict(r) for r in all_rounds]
+
+    if not all_rounds:
+        conn.close()
+        flash('No rounds to recalculate.', 'info')
+        return redirect(url_for('dashboard', golfer_id=golfer_id))
+
+    conn.execute('DELETE FROM handicap_snapshot WHERE golfer_id = ?', (golfer_id,))
+
+    count = 0
+    for i, rnd in enumerate(all_rounds):
+        rounds_so_far = all_rounds[:i + 1]
+        handicap, rounds_used = calculate_handicap_as_of(rounds_so_far)
+        if handicap is not None:
+            conn.execute('''
+                INSERT INTO handicap_snapshot (golfer_id, round_id, calculated_on, handicap_index, rounds_used)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (golfer_id, rnd['id'], rnd['played_on'], handicap, rounds_used))
+            count += 1
+
+    conn.commit()
+    conn.close()
+    flash(f'Recalculated {count} snapshots across {len(all_rounds)} rounds.', 'success')
     conn.close()
     return redirect(url_for('dashboard', golfer_id=golfer_id))
 
