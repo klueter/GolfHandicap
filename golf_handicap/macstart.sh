@@ -1,4 +1,10 @@
 #!/bin/bash
+if [ "$1" = "stop" ]; then
+    pkill -f "python3 app.py" 2>/dev/null
+    echo "Golf Handicap Tracker stopped."
+    exit 0
+fi
+
 cd /Users/dankl/Documents/GitHub/GolfHandicap/golf_handicap
 
 # Kill any existing app.py process
