@@ -1,0 +1,4 @@
+cp -r ~/golf_handicap/. ~/Documents/GitHub/GolfHandicap/golf_handicap/
+
+cd ~/Documents/GitHub/GolfHandicap/golf_handicap
+docker buildx build --no-cache --platform linux/amd64 -t dankl/golf-handicap:latest --push .
