@@ -791,6 +791,60 @@ def add_tee():
     flash('Tee set added.', 'success')
     return redirect(url_for('courses'))
 
+@app.route('/course/<int:course_id>/edit', methods=['POST'])
+def edit_course(course_id):
+    blocked = require_admin()
+    if blocked:
+        return blocked
+    name = request.form.get('name', '').strip()
+    city = request.form.get('city', '').strip() or None
+    country = request.form.get('country', '').strip() or None
+    if name:
+        conn = get_db()
+        conn.execute('UPDATE course SET name = ?, city = ?, country = ? WHERE id = ?',
+                     (name, city, country, course_id))
+        conn.commit()
+        conn.close()
+        flash(f'Course updated.', 'success')
+    return redirect(url_for('courses', course_id=course_id))
+
+
+@app.route('/tee/<int:tee_id>/edit', methods=['POST'])
+def edit_tee(tee_id):
+    blocked = require_admin()
+    if blocked:
+        return blocked
+    conn = get_db()
+    tee = conn.execute('SELECT course_id FROM tee_set WHERE id = ?', (tee_id,)).fetchone()
+    if not tee:
+        conn.close()
+        flash('Tee set not found.', 'danger')
+        return redirect(url_for('courses'))
+
+    tee_name = request.form.get('tee_name', '').strip()
+    gender = request.form.get('gender', 'Any').strip()
+    if gender not in ('M', 'F', 'Any'):
+        gender = 'Any'
+
+    try:
+        cr = float(request.form['course_rating'])
+        sr = int(float(request.form['slope_rating']))
+        par = int(float(request.form['par']))
+    except (ValueError, KeyError):
+        conn.close()
+        flash('Invalid tee data.', 'danger')
+        return redirect(url_for('courses', course_id=tee['course_id']))
+
+    conn.execute('''
+        UPDATE tee_set SET tee_name = ?, gender = ?, course_rating = ?, slope_rating = ?, par = ?
+        WHERE id = ?
+    ''', (tee_name, gender, cr, sr, par, tee_id))
+    conn.commit()
+    conn.close()
+    flash('Tee set updated.', 'success')
+    return redirect(url_for('courses', course_id=tee['course_id']))
+
+
 @app.route('/tee/<int:tee_id>/copy', methods=['POST'])
 def copy_tee(tee_id):
     blocked = require_admin()
