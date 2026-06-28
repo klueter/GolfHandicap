@@ -193,11 +193,14 @@
                 })();
                 </script>
             </div>
-            <div class="form-group">
-                <label>Tee Set</label>
-                <select id="tee-select" name="tee_set_id" required>
-                    <option value="">Select tees…</option>
-                </select>
+            <div class="form-group" style="display:flex; gap:0.5rem; align-items:end;">
+                <div style="flex:1;">
+                    <label>Tee Set</label>
+                    <select id="tee-select" name="tee_set_id" required onchange="var btn=document.getElementById('scorecard-link'); if(this.value){btn.href='/tee/'+this.value+'/scorecard?golfer_id={{ golfer.id }}'; btn.style.display='inline-block';}else{btn.style.display='none';}">
+                        <option value="">Select tees…</option>
+                    </select>
+                </div>
+                <a id="scorecard-link" href="#" class="btn btn-sm btn-secondary" style="display:none; margin-bottom:0.25rem;" target="_blank">Scorecard</a>
             </div>
             <div class="form-group">
                 <label>Holes</label>
