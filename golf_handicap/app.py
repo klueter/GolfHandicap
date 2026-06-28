@@ -476,10 +476,16 @@ def dashboard(golfer_id):
             # Soft cap: 50% of excess above 3.0
             capped_handicap = round(low_index + 3.0 + (diff - 3.0) * 0.5, 1)
 
+    course_json = json.dumps([
+        {'id': c['id'], 'text': c['name'] + (' · ' + c['city'] + (', ' + c['country'] if c.get('country') else '') if c.get('city') else '')}
+        for c in courses
+    ])
+
     return render_template('dashboard.html',
         golfer=golfer,
         rounds=rounds,
         courses=courses,
+        course_json=course_json,
         handicap=capped_handicap,
         uncapped_handicap=handicap,
         low_index=low_index,

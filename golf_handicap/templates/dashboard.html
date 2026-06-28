@@ -132,14 +132,65 @@
     <section class="card">
         <h2>Record a Round</h2>
         <form method="POST" action="{{ url_for('add_round', golfer_id=golfer.id) }}">
-            <div class="form-group">
+            <div class="form-group" style="position:relative;">
                 <label>Course</label>
-                <select id="course-select" name="course_id" required onchange="loadTees()">
-                    <option value="">Select a course…</option>
-                    {% for course in courses %}
-                        <option value="{{ course.id }}">{{ course.name }}{% if course.city %} ({{ course.city }}){% endif %}</option>
-                    {% endfor %}
-                </select>
+                <input type="hidden" id="course-select" name="course_id" required>
+                <div style="position:relative;">
+                    <input type="text" id="course-search-round" autocomplete="off" placeholder="Type to filter…" style="width:100%; padding-right:2rem;">
+                    <span id="course-clear-round" onclick="document.getElementById('course-search-round').value=''; document.getElementById('course-select').value=''; document.getElementById('course-search-round').focus(); document.getElementById('course-search-round').dispatchEvent(new Event('input')); document.getElementById('tee-select').innerHTML='<option value=\x22\x22>Select tees…</option>';"
+                          style="position:absolute; right:0.5rem; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted, #888); display:none;">&times;</span>
+                </div>
+                <div id="course-dropdown-round" style="display:none; position:absolute; z-index:100; left:0; right:0; max-height:250px; overflow-y:auto; background:var(--bg, #fff); border:1px solid var(--border, #ccc); border-top:none; border-radius:0 0 4px 4px; box-shadow:0 4px 8px rgba(0,0,0,0.1);"></div>
+                <script>
+                (function() {
+                    var courses = {{ course_json|safe }};
+                    var input = document.getElementById('course-search-round');
+                    var hidden = document.getElementById('course-select');
+                    var dropdown = document.getElementById('course-dropdown-round');
+                    var clearBtn = document.getElementById('course-clear-round');
+
+                    function render(filter) {
+                        var f = (filter || '').toLowerCase();
+                        var html = '';
+                        courses.forEach(function(c) {
+                            if (!f || c.text.toLowerCase().indexOf(f) >= 0) {
+                                html += '<div style="padding:0.5rem 0.75rem; cursor:pointer;"'
+                                    + ' onmousedown="selectCourse('+c.id+',\''+c.text.replace(/'/g,"\\'")+'\')"'
+                                    + ' onmouseover="this.style.background=\'var(--accent-light, #e8f0fe)\'"'
+                                    + ' onmouseout="this.style.background=\'\'"'
+                                    + '>'+c.text+'</div>';
+                            }
+                        });
+                        dropdown.innerHTML = html || '<div style="padding:0.5rem 0.75rem; color:var(--text-muted, #888);">No matches</div>';
+                    }
+
+                    window.selectCourse = function(id, text) {
+                        hidden.value = id;
+                        input.value = text;
+                        clearBtn.style.display = 'inline';
+                        dropdown.style.display = 'none';
+                        loadTees();
+                    };
+
+                    input.addEventListener('focus', function() {
+                        if (hidden.value) { input.select(); }
+                        render(hidden.value ? '' : input.value);
+                        dropdown.style.display = 'block';
+                    });
+                    input.addEventListener('input', function() {
+                        render(input.value);
+                        dropdown.style.display = 'block';
+                        clearBtn.style.display = input.value ? 'inline' : 'none';
+                        hidden.value = '';
+                    });
+                    input.addEventListener('blur', function() {
+                        setTimeout(function(){ dropdown.style.display = 'none'; }, 150);
+                    });
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'Escape') { dropdown.style.display = 'none'; input.blur(); }
+                    });
+                })();
+                </script>
             </div>
             <div class="form-group">
                 <label>Tee Set</label>
