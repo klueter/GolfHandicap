@@ -1270,7 +1270,7 @@ def player_report(golfer_id):
         }
 
     by_date = list(rounds)
-    by_diff = sorted([r for r in rounds if r['score_differential'] is not None],
+    by_diff = sorted([r for r in rounds[:20] if r['score_differential'] is not None],
                      key=lambda r: r['score_differential'])
 
     return render_template('report.html',
