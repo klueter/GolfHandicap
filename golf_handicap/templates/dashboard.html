@@ -189,11 +189,14 @@
     <!-- Recent Rounds -->
     <section class="card">
         <div class="rounds-header">
-            <h2>Last 20 Rounds</h2>
+            <h2>Rounds ({{ rounds|length }})</h2>
             <div class="sort-controls">
                 <span class="sort-label">Sort:</span>
                 <button type="button" id="sort-date" class="btn btn-sm sort-btn active" onclick="sortRounds('date')">Date ↓</button>
                 <button type="button" id="sort-diff" class="btn btn-sm sort-btn" onclick="sortRounds('diff')">Diff</button>
+                {% if rounds|length > 20 %}
+                <button type="button" class="btn btn-sm btn-secondary" onclick="var el=document.querySelectorAll('.round-older'); el.forEach(function(e){e.style.display=e.style.display==='none'?'':'none'}); this.textContent=this.textContent==='Show All'?'Show 20':'Show All';">Show All</button>
+                {% endif %}
             </div>
         </div>
 
@@ -207,9 +210,10 @@
 
             <div class="rounds-list" id="rounds-list">
                 {% for round in rounds %}
-                    <div class="round-pair"
+                    <div class="round-pair{% if loop.index > 20 %} round-older{% endif %}"
                          data-date="{{ round.played_on }}"
-                         data-diff="{{ round.score_differential if round.score_differential is not none else '9999' }}">
+                         data-diff="{{ round.score_differential if round.score_differential is not none else '9999' }}"
+                         {% if loop.index > 20 %}style="display:none;"{% endif %}>
 
                         <div class="round-item{% if round.id in used_round_ids %} round-item--used{% endif %}">
                             <div class="round-info">

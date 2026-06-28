@@ -400,14 +400,14 @@ def dashboard(golfer_id):
     golfer = conn.execute('SELECT * FROM golfer WHERE id = ?', (golfer_id,)).fetchone()
     golfer = dict(golfer) if golfer else None
     
-    # Get rounds with course info
+    # Get all rounds — need 20 most recent for index, plus older ones for cap history
     rounds_data = conn.execute('''
         SELECT r.*, c.name as course_name, t.tee_name, t.par as par,
                t.course_rating, t.slope_rating
         FROM round r
         JOIN tee_set t ON r.tee_set_id = t.id
         JOIN course c ON t.course_id = c.id
-        WHERE r.golfer_id = ? AND r.played_on >= date('now', '-1 year')
+        WHERE r.golfer_id = ?
         ORDER BY r.played_on DESC
     ''', (golfer_id,)).fetchall()
     
