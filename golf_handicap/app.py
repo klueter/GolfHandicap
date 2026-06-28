@@ -185,9 +185,22 @@ def check_exceptional_score(conn, golfer_id, round_id):
     the player's index at the time of play, apply -1 or -2 to all 20
     most recent differentials. New rounds posted later won't carry the
     adjustment, so the effect fades as adjusted rounds age out."""
-    handicap, _, _ = calculate_handicap(golfer_id)
-    if handicap is None:
+    # Calculate handicap WITHOUT exceptional reductions to avoid feedback loop
+    rows = conn.execute('''
+        SELECT id, score_differential FROM round
+        WHERE golfer_id = ? ORDER BY played_on DESC LIMIT 20
+    ''', (golfer_id,)).fetchall()
+    valid = [r['score_differential'] for r in rows if r['score_differential'] is not None]
+    n = len(valid)
+    if n < 3:
         return
+
+    use = {3:1, 4:1, 5:1, 6:2, 7:2, 8:2, 9:3, 10:3, 11:3, 12:4, 13:4, 14:4,
+           15:5, 16:5, 17:6, 18:6, 19:7}.get(n, 8)
+    sorted_diffs = sorted(valid)
+    avg = sum(sorted_diffs[:use]) / use
+    adjustment = {3: -2.0, 4: -1.0, 6: -1.0}.get(n, 0)
+    handicap = round((avg + adjustment) * 0.96, 1)
 
     row = conn.execute('SELECT score_differential FROM round WHERE id = ?', (round_id,)).fetchone()
     if not row or row['score_differential'] is None:
