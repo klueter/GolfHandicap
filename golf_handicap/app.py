@@ -1259,6 +1259,15 @@ def player_report(golfer_id):
     ''', (golfer_id,)).fetchone()
     low_index = low_row['low_index'] if low_row else None
     low_date = low_row['low_date'] if low_row else None
+
+    snapshots_data = conn.execute('''
+        SELECT calculated_on, handicap_index
+        FROM handicap_snapshot
+        WHERE golfer_id = ? AND calculated_on >= date('now', '-1 year')
+        ORDER BY calculated_on DESC, id DESC
+    ''', (golfer_id,)).fetchall()
+    snapshots = [dict(s) for s in snapshots_data]
+
     conn.close()
 
     handicap, rounds_used, used_round_ids = calculate_handicap(golfer_id)
@@ -1312,6 +1321,7 @@ def player_report(golfer_id):
         used_round_ids=used_round_ids,
         cap_type=cap_type,
         calc=calc,
+        snapshots=snapshots,
         by_date=by_date,
         by_diff=by_diff,
         today=date.today().isoformat(),
