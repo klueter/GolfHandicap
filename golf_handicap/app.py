@@ -407,9 +407,8 @@ def dashboard(golfer_id):
         FROM round r
         JOIN tee_set t ON r.tee_set_id = t.id
         JOIN course c ON t.course_id = c.id
-        WHERE r.golfer_id = ?
+        WHERE r.golfer_id = ? AND r.played_on >= date('now', '-1 year')
         ORDER BY r.played_on DESC
-        LIMIT 20
     ''', (golfer_id,)).fetchall()
     
     rounds = []
@@ -441,7 +440,10 @@ def dashboard(golfer_id):
         ORDER BY c.name
     ''').fetchall()
     courses = [dict(c) for c in courses_data]
-    
+    for c in courses:
+        tees = conn.execute('SELECT id, tee_name FROM tee_set WHERE course_id = ? ORDER BY course_rating DESC', (c['id'],)).fetchall()
+        c['tees'] = [dict(t) for t in tees]
+
     snapshots_data = conn.execute('''
         SELECT calculated_on, handicap_index, rounds_used
         FROM handicap_snapshot
@@ -711,6 +713,51 @@ def save_hole_scores(golfer_id, round_id):
     else:
         flash(f'Hole scores saved. Total score: {actual_total}.', 'success')
     return redirect(url_for('dashboard', golfer_id=golfer_id))
+
+@app.route('/golfer/<int:golfer_id>/round/<int:round_id>/edit', methods=['POST'])
+def edit_round(golfer_id, round_id):
+    blocked = require_golfer_access(golfer_id)
+    if blocked:
+        return blocked
+
+    tee_set_id = request.form.get('tee_set_id')
+    played_on = request.form.get('played_on')
+    score = request.form.get('adjusted_gross_score', '').strip()
+    notes = request.form.get('weather_notes', '').strip() or None
+    holes_played = int(request.form.get('holes_played', '18'))
+    nine = request.form.get('nine') or None
+    if holes_played == 18:
+        nine = None
+
+    score = int(score) if score else 0
+
+    conn = get_db()
+    conn.execute('''
+        UPDATE round SET tee_set_id = ?, played_on = ?, holes_played = ?, nine = ?,
+                         adjusted_gross_score = ?, actual_gross_score = ?, weather_notes = ?
+        WHERE id = ? AND golfer_id = ?
+    ''', (tee_set_id, played_on, holes_played, nine, score, score, notes, round_id, golfer_id))
+
+    # Recalculate differential
+    tee = dict(conn.execute('SELECT * FROM tee_set WHERE id = ?', (tee_set_id,)).fetchone())
+    if holes_played == 9 and score > 0:
+        rating, slope, nine_par = get_nine_hole_rating(tee, nine)
+        nine_diff = round((score - rating) * 113.0 / slope, 1)
+        handicap, _, _ = calculate_handicap(golfer_id)
+        expected_diff = handicap / 2.0 if handicap else 27.0
+        full_diff = round(nine_diff + expected_diff, 1)
+        conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (full_diff, round_id))
+    elif score > 0:
+        diff = round((score - tee['course_rating']) * 113.0 / tee['slope_rating'], 1)
+        conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (diff, round_id))
+
+    conn.commit()
+    save_snapshot(conn, golfer_id, round_id, played_on)
+    conn.commit()
+    conn.close()
+    flash('Round updated.', 'success')
+    return redirect(url_for('dashboard', golfer_id=golfer_id))
+
 
 @app.route('/golfer/<int:golfer_id>/round/<int:round_id>/delete', methods=['POST'])
 def delete_round(golfer_id, round_id):
