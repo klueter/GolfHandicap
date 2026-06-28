@@ -36,6 +36,7 @@
             <div class="stat-item">
                 <span class="stat-label">Low HI (12 mo)</span>
                 <span class="stat-value">{{ low_index }}</span>
+                {% if low_date %}<span class="stat-note" style="font-size:0.75rem; color:var(--text-muted, #888);">{{ low_date }}</span>{% endif %}
             </div>
         {% endif %}
         {% if uncapped_handicap is not none and low_index is not none %}
@@ -86,12 +87,12 @@
             <circle
                 cx="{{ (loop.index0 * 600 / (reversed_snaps|length - 1))|round(1) }}"
                 cy="{{ (70 - (s.handicap_index - ns.min_val) / range_val * 60)|round(1) }}"
-                r="4"
-                fill="white"
-                stroke="#1f6f42"
+                r="{% if low_date and s.calculated_on == low_date and s.handicap_index == low_index %}6{% else %}4{% endif %}"
+                fill="{% if low_date and s.calculated_on == low_date and s.handicap_index == low_index %}#e6b800{% else %}white{% endif %}"
+                stroke="{% if low_date and s.calculated_on == low_date and s.handicap_index == low_index %}#cc8400{% else %}#1f6f42{% endif %}"
                 stroke-width="2"
             >
-                <title>{{ s.calculated_on }}: {{ s.handicap_index }}</title>
+                <title>{{ s.calculated_on }}: {{ s.handicap_index }}{% if low_date and s.calculated_on == low_date and s.handicap_index == low_index %} ★ Low HI{% endif %}</title>
             </circle>
         {% endfor %}
     </svg>
