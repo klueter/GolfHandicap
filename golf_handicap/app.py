@@ -449,7 +449,6 @@ def dashboard(golfer_id):
         FROM handicap_snapshot
         WHERE golfer_id = ? AND calculated_on >= date('now', '-1 year')
         ORDER BY calculated_on DESC, id DESC
-        LIMIT 10
     ''', (golfer_id,)).fetchall()
     snapshots = [dict(s) for s in snapshots_data]
 
