@@ -26,6 +26,7 @@
             <div class="report-stat">
                 <span class="report-stat-label">Low HI (12 mo)</span>
                 <span class="report-stat-value">{{ low_index }}</span>
+                <span class="report-stat-note">{{ low_date }}</span>
             </div>
             {% endif %}
             {% if uncapped_handicap is not none and low_index is not none %}
@@ -61,7 +62,7 @@
                 <tr><td>After adjustment</td><td class="num">{{ "%.2f"|format(calc.pre_multiplier) }}</td></tr>
                 <tr><td>&times; {{ calc.multiplier }}</td><td class="num">{{ calc.uncapped }}</td></tr>
                 {% if low_index is not none %}
-                <tr><td>Low HI (12 months)</td><td class="num">{{ low_index }}</td></tr>
+                <tr><td>Low HI (12 months) — {{ low_date }}</td><td class="num">{{ low_index }}</td></tr>
                 {% endif %}
                 {% if cap_type == 'soft' %}
                 <tr class="capped-value"><td>Soft cap applied</td><td class="num">{{ handicap }}</td></tr>
