@@ -43,6 +43,38 @@
         </div>
     </div>
 
+    {% if calc %}
+    <div class="report-section" style="margin-bottom:1.5rem;">
+        <h2>Index Calculation</h2>
+        <table class="report-table" style="max-width:500px;">
+            <tbody>
+                <tr><td>Rounds available</td><td class="num">{{ calc.n }} (of 20 max)</td></tr>
+                <tr><td>Differentials used</td><td class="num">Best {{ calc.use }} of {{ calc.n }}</td></tr>
+                <tr>
+                    <td>Used differentials</td>
+                    <td class="num">{{ calc.used_diffs|map('string')|join(', ') }}</td>
+                </tr>
+                <tr><td>Average</td><td class="num">{{ "%.2f"|format(calc.avg) }}</td></tr>
+                {% if calc.adjustment != 0 %}
+                <tr><td>Adjustment (small sample)</td><td class="num">{{ "%+.1f"|format(calc.adjustment) }}</td></tr>
+                {% endif %}
+                <tr><td>After adjustment</td><td class="num">{{ "%.2f"|format(calc.pre_multiplier) }}</td></tr>
+                <tr><td>&times; {{ calc.multiplier }}</td><td class="num">{{ calc.uncapped }}</td></tr>
+                {% if low_index is not none %}
+                <tr><td>Low HI (12 months)</td><td class="num">{{ low_index }}</td></tr>
+                {% endif %}
+                {% if cap_type == 'soft' %}
+                <tr class="capped-value"><td>Soft cap applied</td><td class="num">{{ handicap }}</td></tr>
+                {% elif cap_type == 'hard' %}
+                <tr class="capped-value"><td>Hard cap applied (Low HI + 5.0)</td><td class="num">{{ handicap }}</td></tr>
+                {% else %}
+                <tr><td><strong>Handicap Index</strong></td><td class="num"><strong>{{ handicap }}</strong></td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
     <div class="report-columns">
         <div class="report-column">
             <h2>By Date</h2>

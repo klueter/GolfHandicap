@@ -1204,13 +1204,13 @@ def player_report(golfer_id):
     golfer = dict(golfer) if golfer else None
 
     rounds_data = conn.execute('''
-        SELECT r.*, c.name as course_name, t.tee_name, t.par
+        SELECT r.*, c.name as course_name, t.tee_name, t.par,
+               t.course_rating, t.slope_rating
         FROM round r
         JOIN tee_set t ON r.tee_set_id = t.id
         JOIN course c ON t.course_id = c.id
         WHERE r.golfer_id = ?
         ORDER BY r.played_on DESC
-        LIMIT 20
     ''', (golfer_id,)).fetchall()
     rounds = [dict(r) for r in rounds_data]
 
@@ -1225,12 +1225,39 @@ def player_report(golfer_id):
     handicap, rounds_used, used_round_ids = calculate_handicap(golfer_id)
 
     capped_handicap = handicap
+    cap_type = None
     if handicap is not None and low_index is not None:
         diff = handicap - low_index
         if diff > 5.0:
             capped_handicap = round(low_index + 5.0, 1)
+            cap_type = 'hard'
         elif diff > 3.0:
             capped_handicap = round(low_index + 3.0 + (diff - 3.0) * 0.5, 1)
+            cap_type = 'soft'
+
+    # Build calculation breakdown
+    calc = None
+    if handicap is not None and rounds_used >= 3:
+        valid = [(r['id'], r['score_differential'], r['exceptional_reduction'] or 0)
+                 for r in rounds[:20] if r['score_differential'] is not None]
+        n = len(valid)
+        use = {3:1, 4:1, 5:1, 6:2, 7:2, 8:2, 9:3, 10:3, 11:3, 12:4, 13:4, 14:4,
+               15:5, 16:5, 17:6, 18:6, 19:7}.get(n, 8)
+        adjusted = [(rid, d + red) for rid, d, red in valid]
+        sorted_valid = sorted(adjusted, key=lambda x: x[1])
+        used_diffs = [row[1] for row in sorted_valid[:use]]
+        avg = sum(used_diffs) / use
+        adjustment = {3: -2.0, 4: -1.0, 6: -1.0}.get(n, 0)
+        calc = {
+            'n': n,
+            'use': use,
+            'used_diffs': used_diffs,
+            'avg': round(avg, 2),
+            'adjustment': adjustment,
+            'pre_multiplier': round(avg + adjustment, 2),
+            'multiplier': 0.96,
+            'uncapped': handicap,
+        }
 
     by_date = list(rounds)
     by_diff = sorted([r for r in rounds if r['score_differential'] is not None],
@@ -1243,6 +1270,8 @@ def player_report(golfer_id):
         low_index=low_index,
         rounds_used=rounds_used,
         used_round_ids=used_round_ids,
+        cap_type=cap_type,
+        calc=calc,
         by_date=by_date,
         by_diff=by_diff,
         today=date.today().isoformat(),
