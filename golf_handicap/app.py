@@ -584,19 +584,28 @@ def add_round(golfer_id):
     if holes_played == 18:
         nine = None
 
-    score = int(score) if score else 0
+    score = int(score) if score else None
+
+    if score is not None and score < 1:
+        flash('Score must be at least 1.', 'danger')
+        return redirect(url_for('dashboard', golfer_id=golfer_id))
 
     conn = get_db()
     cursor = conn.execute('''
         INSERT INTO round (golfer_id, tee_set_id, played_on, holes_played, nine,
                            adjusted_gross_score, actual_gross_score, weather_notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (golfer_id, tee_set_id, played_on, holes_played, nine, score, score, notes))
+    ''', (golfer_id, tee_set_id, played_on, holes_played, nine, score or 0, score or 0, notes))
     round_id = cursor.lastrowid
     conn.commit()
 
+    # Clear bogus differential if no score entered
+    if not score:
+        conn.execute('UPDATE round SET score_differential = NULL WHERE id = ?', (round_id,))
+        conn.commit()
+
     # For 9-hole rounds, override the trigger-calculated differential
-    if holes_played == 9 and score > 0:
+    if score and holes_played == 9:
         tee = dict(conn.execute('SELECT * FROM tee_set WHERE id = ?', (tee_set_id,)).fetchone())
         rating, slope, nine_par = get_nine_hole_rating(tee, nine)
         nine_diff = round((score - rating) * 113.0 / slope, 1)
@@ -750,27 +759,34 @@ def edit_round(golfer_id, round_id):
     if holes_played == 18:
         nine = None
 
-    score = int(score) if score else 0
+    score = int(score) if score else None
+
+    if score is not None and score < 1:
+        flash('Score must be at least 1.', 'danger')
+        return redirect(url_for('dashboard', golfer_id=golfer_id))
 
     conn = get_db()
     conn.execute('''
         UPDATE round SET tee_set_id = ?, played_on = ?, holes_played = ?, nine = ?,
                          adjusted_gross_score = ?, actual_gross_score = ?, weather_notes = ?
         WHERE id = ? AND golfer_id = ?
-    ''', (tee_set_id, played_on, holes_played, nine, score, score, notes, round_id, golfer_id))
+    ''', (tee_set_id, played_on, holes_played, nine, score or 0, score or 0, notes, round_id, golfer_id))
 
     # Recalculate differential
-    tee = dict(conn.execute('SELECT * FROM tee_set WHERE id = ?', (tee_set_id,)).fetchone())
-    if holes_played == 9 and score > 0:
-        rating, slope, nine_par = get_nine_hole_rating(tee, nine)
-        nine_diff = round((score - rating) * 113.0 / slope, 1)
-        handicap, _, _ = calculate_handicap(golfer_id)
-        expected_diff = handicap / 2.0 if handicap else 27.0
-        full_diff = round(nine_diff + expected_diff, 1)
-        conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (full_diff, round_id))
-    elif score > 0:
-        diff = round((score - tee['course_rating']) * 113.0 / tee['slope_rating'], 1)
-        conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (diff, round_id))
+    if score and score > 0:
+        tee = dict(conn.execute('SELECT * FROM tee_set WHERE id = ?', (tee_set_id,)).fetchone())
+        if holes_played == 9:
+            rating, slope, nine_par = get_nine_hole_rating(tee, nine)
+            nine_diff = round((score - rating) * 113.0 / slope, 1)
+            handicap, _, _ = calculate_handicap(golfer_id)
+            expected_diff = handicap / 2.0 if handicap else 27.0
+            full_diff = round(nine_diff + expected_diff, 1)
+            conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (full_diff, round_id))
+        else:
+            diff = round((score - tee['course_rating']) * 113.0 / tee['slope_rating'], 1)
+            conn.execute('UPDATE round SET score_differential = ? WHERE id = ?', (diff, round_id))
+    else:
+        conn.execute('UPDATE round SET score_differential = NULL WHERE id = ?', (round_id,))
 
     conn.commit()
     save_snapshot(conn, golfer_id, round_id, played_on)
